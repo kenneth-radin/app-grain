@@ -21,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
 import { useAppContext } from '@/context/AppContext';
 import { grainApi } from '@/api';
@@ -32,8 +32,15 @@ const BIO_MAX_LENGTH = 200;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, updateProfile, updateProfileImage, logout } = useAuth();
+  const { user, updateProfile, updateProfileImage, logout, refreshProfile } = useAuth();
   const { showToast } = useAppContext();
+
+  // Refresh profile on focus to sync with web admin changes
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [])
+  );
 
   const [name, setName] = useState(user?.name || '');
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
@@ -139,7 +146,9 @@ export default function ProfileScreen() {
           showToast('Image too large. Please choose a smaller image.', 'error');
           return;
         }
-        await updateProfileImage(manipulated.base64);
+        // Convert raw base64 to data URI format expected by backend
+        const dataUri = `data:image/jpeg;base64,${manipulated.base64}`;
+        await updateProfileImage(dataUri);
         showToast('Profile photo updated', 'success');
       }
     } catch (err: any) {
@@ -215,7 +224,7 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradient colors={GRADIENTS.settings} style={styles.gradient}>
-        <Header />
+        <Header showBack onBack={() => router.back()} />
         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
             <Text style={styles.screenTitle}>My Profile</Text>
@@ -226,7 +235,7 @@ export default function ProfileScreen() {
                 {user?.profileImage ? (
                   <View style={styles.avatarCircle}>
                     <Image
-                      source={{ uri: `data:image/jpeg;base64,${user.profileImage}` }}
+                      source={{ uri: user.profileImage.startsWith('data:') ? user.profileImage : `data:image/jpeg;base64,${user.profileImage}` }}
                       style={styles.avatarImage}
                       resizeMode="cover"
                     />

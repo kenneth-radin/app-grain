@@ -1,5 +1,7 @@
+import Constants from 'expo-constants'
+
 export const APP_NAME = 'grAIn';
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export const COLORS = {
   primary: '#22C55E',

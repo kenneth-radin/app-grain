@@ -55,7 +55,7 @@ export interface AlertItem {
 export interface Command {
   _id: string
   deviceId: string
-  command: 'start' | 'stop'
+  command: 'start' | 'stop' | 'fan_control'
   status: 'pending' | 'executed' | 'failed'
   parameters: {
     mode: DryerMode
@@ -367,6 +367,21 @@ class GrainApiClient {
         return Array.isArray(response.data.data) ? response.data.data : []
       }
       throw new Error('Invalid commands response')
+    },
+
+    controlFan: async (
+      deviceId: string,
+      fan: 'FAN1' | 'FAN2' | 'ALL',
+      action: 'ON' | 'OFF'
+    ): Promise<Command> => {
+      const response = await this.client.post<ApiResponse<Command>>(
+        `/dryer/${deviceId}/fan`,
+        { fan, action }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid fan control response')
     },
   }
 

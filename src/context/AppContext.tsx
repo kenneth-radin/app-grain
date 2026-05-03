@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { grainApi } from '@/api';
 import type { User, Device, AlertItem } from '@/api';
 import { useAuth } from '@/hooks';
+import { flushQueue, getQueueCount } from '@/utils/commandQueue';
 
 interface ToastState {
   message: string;
@@ -16,6 +17,7 @@ interface AppContextType {
   settings: any;
   isLoading: boolean;
   isServerOnline: boolean;
+  queuedCommandCount: number;
   toast: ToastState;
   handleLogout: () => Promise<void>;
   showToast: (message: string, type?: ToastState['type']) => void;
@@ -31,6 +33,7 @@ const AppContext = createContext<AppContextType>({
   settings: null,
   isLoading: false,
   isServerOnline: true,
+  queuedCommandCount: 0,
   toast: { message: '', type: 'info', visible: false },
   handleLogout: async () => {},
   showToast: () => {},
@@ -47,6 +50,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(true);
+  const [queuedCommandCount, setQueuedCommandCount] = useState(0);
+  const prevOnlineRef = useRef(true);
   const [toast, setToast] = useState<ToastState>({ message: '', type: 'info', visible: false });
 
   const showToast = useCallback((message: string, type: ToastState['type'] = 'info') => {
@@ -83,6 +88,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Flush queued commands when server comes back online
+  useEffect(() => {
+    if (isServerOnline && !prevOnlineRef.current) {
+      flushQueue().then(() => getQueueCount().then(setQueuedCommandCount));
+    }
+    prevOnlineRef.current = isServerOnline;
+  }, [isServerOnline]);
+
+  // Keep queued count updated
+  useEffect(() => {
+    if (!isServerOnline) {
+      getQueueCount().then(setQueuedCommandCount);
+      const interval = setInterval(() => getQueueCount().then(setQueuedCommandCount), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isServerOnline]);
+
   const refreshData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -109,6 +131,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         settings,
         isLoading,
         isServerOnline,
+        queuedCommandCount,
         toast,
         handleLogout,
         showToast,

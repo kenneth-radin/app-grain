@@ -73,6 +73,7 @@ interface AuthContextType {
   clearError: () => void;
   updateProfile: (data: ProfileUpdateData) => Promise<void>;
   updateProfileImage: (base64: string) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -87,6 +88,7 @@ const AuthContext = createContext<AuthContextType>({
   clearError: () => {},
   updateProfile: async () => {},
   updateProfileImage: async () => {},
+  refreshProfile: async () => {},
 });
 
 const RESTORE_AUTH_TIMEOUT = ApiTimeout.Startup; // 10s timeout for startup auth check (vs 30s default)
@@ -221,6 +223,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    try {
+      const user = await grainApi.auth.me();
+      try {
+        const profile = await grainApi.profile.get();
+        dispatch({ type: 'AUTH_SUCCESS', payload: { ...user, ...profile } });
+      } catch {
+        dispatch({ type: 'AUTH_SUCCESS', payload: user });
+      }
+    } catch {
+      // Silently fail — profile will stay stale until next successful refresh
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -235,6 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearError,
         updateProfile,
         updateProfileImage,
+        refreshProfile,
       }}
     >
       {children}

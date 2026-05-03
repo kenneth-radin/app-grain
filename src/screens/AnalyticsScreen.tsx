@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { LineChart, BarChart } from 'react-native-chart-kit';
-import { Header, Navigation } from '@/components';
+import { Header, Navigation, ErrorBoundary } from '@/components';
 import { grainApi } from '@/api';
 import { useAppContext } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
@@ -85,23 +85,26 @@ export default function AnalyticsScreen() {
     { key: 'monthly', label: 'Monthly' },
   ];
 
-  const moistureTrend = overview?.moistureTrend || [];
-  const dryingCycles = overview?.dryingCycles || [];
-  const energyConsumption = overview?.energyConsumption || [];
+  const moistureTrend = overview?.moistureTrend ?? [];
+  const dryingCycles = overview?.dryingCycles ?? [];
+  const energyConsumption = overview?.energyConsumption ?? [];
 
-  const safeChartData = (items: Array<{ label: string; value: number }>, fallback: typeof fallbackData) => {
-    if (!items || items.length === 0) return fallback;
-    const values = items.map((d) => d.value);
-    // BarChart crashes if any value <= 0, so floor at a small positive number
-    const safeValues = values.map((v) => Math.max(v, 0.1));
-    return {
-      labels: items.map((d) => d.label || '--'),
-      datasets: [{ data: safeValues }],
-    };
+  const safeChartData = (items: Array<{ label: string; value: number }> | undefined | null, fallback: typeof fallbackData) => {
+    if (!items || !Array.isArray(items) || items.length === 0) return fallback;
+    try {
+      const values = items.map((d) => d?.value ?? 0);
+      const safeValues = values.map((v) => Math.max(v, 0.1));
+      return {
+        labels: items.map((d) => d?.label || '--'),
+        datasets: [{ data: safeValues }],
+      };
+    } catch {
+      return fallback;
+    }
   };
 
   const moistureChartData = moistureTrend.length > 0
-    ? { labels: moistureTrend.map((d) => d.label || '--'), datasets: [{ data: moistureTrend.map((d) => d.value) }] }
+    ? { labels: moistureTrend.map((d) => d?.label || '--'), datasets: [{ data: moistureTrend.map((d) => d?.value ?? 0) }] }
     : fallbackData;
 
   const cycleChartData = safeChartData(dryingCycles, fallbackData);
@@ -152,8 +155,14 @@ export default function AnalyticsScreen() {
                 <ActivityIndicator size="large" color="#22C55E" />
                 <Text style={styles.loadingText}>Loading analytics...</Text>
               </View>
+            ) : !overview ? (
+              <View style={styles.loadingContainer}>
+                <Ionicons name="bar-chart-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.loadingText}>No analytics data available</Text>
+                <Text style={styles.loadingText}>Start a drying cycle to see trends</Text>
+              </View>
             ) : (
-              <>
+              <ErrorBoundary>
                 <View style={styles.chartCard}>
                   <Text style={styles.chartTitle}>Moisture Levels Over Time</Text>
                   <LineChart
@@ -191,7 +200,7 @@ export default function AnalyticsScreen() {
                     yAxisSuffix="kWh"
                   />
                 </View>
-              </>
+              </ErrorBoundary>
             )}
           </ScrollView>
         </Animated.View>

@@ -9,7 +9,12 @@ import { useAppContext } from '@/context/AppContext';
 import { IOS_TYPOGRAPHY } from '@/utils/constants';
 import { StorageKeys } from '@/utils/enums';
 
-export default function Header() {
+interface HeaderProps {
+  showBack?: boolean;
+  onBack?: () => void;
+}
+
+export default function Header({ showBack, onBack }: HeaderProps) {
   const { handleLogout } = useAppContext();
   const { logout: authLogout } = useAuth();
   const router = useRouter();
@@ -43,14 +48,21 @@ export default function Header() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <TouchableOpacity onPress={handleLogoPress} style={styles.leftSection} activeOpacity={0.7}>
-          <Image
-            source={require('../../assets/icon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.title}>Grain Dryer System</Text>
-        </TouchableOpacity>
+        {showBack ? (
+          <TouchableOpacity onPress={onBack || (() => router.back())} style={styles.leftSection} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={24} color="#22C55E" />
+            <Text style={styles.title}>Back</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={handleLogoPress} style={styles.leftSection} activeOpacity={0.7}>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={styles.title}>Grain Dryer System</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           onPress={confirmLogout}
           style={styles.logoutButton}

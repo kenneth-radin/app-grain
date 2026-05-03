@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
@@ -40,7 +40,32 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const router = useRouter();
   const { showToast } = useAppContext();
   const { device, isLoading: deviceLoading, error: deviceError, refetch: deviceRefetch } = useDevice(deviceId);
-  const { sensorData: rtData, isOnline: rtOnline, lastUpdated } = useRealtimeSensor(device?.deviceId);
+  const { sensorData: rtData, isOnline: rtOnline, lastUpdated, remoteCommand } = useRealtimeSensor(device?.deviceId);
+
+  const [commandStatus, setCommandStatus] = useState<string | null>(null);
+
+  // Show toast + command status when a remote command is detected (e.g. from web admin)
+  useEffect(() => {
+    if (remoteCommand) {
+      let label = '';
+      if (remoteCommand === 'started' || remoteCommand === 'start') {
+        showToast('Dryer started remotely', 'info');
+        label = 'Start command received';
+      } else if (remoteCommand === 'stopped' || remoteCommand === 'stop') {
+        showToast('Dryer stopped remotely', 'info');
+        label = 'Stop command received';
+      } else if (remoteCommand.includes('fan')) {
+        showToast('Fan control changed remotely', 'info');
+        label = 'Fan command received';
+      } else {
+        label = `${remoteCommand} command received`;
+      }
+      setCommandStatus(label);
+      // Auto-clear after 10 seconds
+      const timer = setTimeout(() => setCommandStatus(null), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [remoteCommand]);
   const { latestData: polledData } = useSensorData(device?.deviceId, 30000);
   const [isControlling, setIsControlling] = useState(false);
 
@@ -54,6 +79,13 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
 
   const liveData = rtData || polledData;
   const fbConnected = rtData !== null;
+
+  const isStale = lastUpdated
+    ? (Date.now() - lastUpdated.getTime()) > 5 * 60 * 1000  // 5 min
+    : false;
+  const isVeryStale = lastUpdated
+    ? (Date.now() - lastUpdated.getTime()) > 15 * 60 * 1000  // 15 min
+    : false;
 
   const [commandHistory, setCommandHistory] = useState<{ action: string; time: string }[]>([]);
 
@@ -71,11 +103,12 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
         onPress: async () => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           setIsControlling(true);
+          // Optimistic UI: update immediately
+          addCommand('START (auto)');
           try {
             await grainApi.dryer.start(deviceId, DryerMode.Auto);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             showToast('Dryer started successfully', 'success');
-            addCommand('START (auto)');
           } catch (err: any) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             showToast(err?.message || 'Failed to start dryer', 'error');
@@ -95,11 +128,12 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           setIsControlling(true);
+          // Optimistic UI: update immediately
+          addCommand('STOP');
           try {
             await grainApi.dryer.stop(deviceId);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             showToast('Dryer stopped successfully', 'success');
-            addCommand('STOP');
           } catch (err: any) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             showToast(err?.message || 'Failed to stop dryer', 'error');
@@ -114,7 +148,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       <SafeAreaView style={s.container} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
-          <Header />
+          <Header showBack onBack={() => router.back()} />
           <View style={s.loadCenter}><ActivityIndicator size="large" color="#22C55E" /><Text style={s.loadText}>Loading device...</Text></View>
         </LinearGradient>
       </SafeAreaView>
@@ -126,7 +160,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       <SafeAreaView style={s.container} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
-          <Header />
+          <Header showBack onBack={() => router.back()} />
           <View style={s.loadCenter}>
             <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
             <Text style={s.errorTxt}>{deviceError || 'Device not found'}</Text>
@@ -148,20 +182,21 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const targetM = 14;
   const progress = moisture <= targetM ? 100 : Math.max(0, Math.round(((100 - moisture) / (100 - targetM)) * 100));
 
+  const staleVal = isVeryStale ? '- -' : null;
   const sensors = [
-    { icon: 'thermometer-outline', val: `${temp} °C`, label: 'TEMPERATURE', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
-    { icon: 'water-outline', val: `${humidity} %`, label: 'HUMIDITY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'analytics-outline', val: `${moisture} %`, label: 'MOISTURE', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'flash-outline', val: `${energy} kWh`, label: 'ENERGY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'speedometer-outline', val: `${fanSpeed} %`, label: 'FAN SPEED', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
-    { icon: 'pulse-outline', val: status.toUpperCase(), label: 'STATUS', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
+    { icon: 'thermometer-outline', val: staleVal ?? `${temp} °C`, label: 'TEMPERATURE', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
+    { icon: 'water-outline', val: staleVal ?? `${humidity} %`, label: 'HUMIDITY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
+    { icon: 'analytics-outline', val: staleVal ?? `${moisture} %`, label: 'MOISTURE', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
+    { icon: 'flash-outline', val: staleVal ?? `${energy} kWh`, label: 'ENERGY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
+    { icon: 'speedometer-outline', val: staleVal ?? `${fanSpeed} %`, label: 'FAN SPEED', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
+    { icon: 'pulse-outline', val: staleVal ?? status.toUpperCase(), label: 'STATUS', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
   ];
 
   return (
     <SafeAreaView style={s.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
-        <Header />
+        <Header showBack onBack={() => router.back()} />
         <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <ScrollView style={s.scroll} contentContainerStyle={s.scrollC}>
           <View style={s.greetRow}>
@@ -176,6 +211,14 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           </View>
 
           <Text style={s.lastUpd}>Last updated: {fmtUpdated(lastUpdated)}{!fbConnected && polledData ? ' (polling)' : ''}</Text>
+
+          {/* Command Status Banner */}
+          {commandStatus && (
+            <View style={s.cmdBanner}>
+              <ActivityIndicator size="small" color="#22C55E" />
+              <Text style={s.cmdBannerText}>{commandStatus}</Text>
+            </View>
+          )}
 
           {/* Drying Alert Banner */}
           {(() => {
@@ -201,6 +244,16 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           <GrainDryingSimulation moisture={moisture} temperature={temp} isRunning={isRunning} targetMoisture={targetM} />
 
           <View style={s.card}><ProgressBar progress={progress} timeRemaining={isRunning ? 'Estimating...' : '--'} showLabel={true} showTime={true} /></View>
+
+          {/* Stale Data Warning */}
+          {isStale && lastUpdated && (
+            <View style={s.staleBanner}>
+              <Ionicons name="warning-outline" size={18} color="#D97706" />
+              <Text style={s.staleBannerText}>
+                Sensor data may be outdated — last update: {Math.round((Date.now() - lastUpdated.getTime()) / 60000)} min ago
+              </Text>
+            </View>
+          )}
 
           <View style={s.sensorGrid}>
             {sensors.map((sen) => (
@@ -275,6 +328,8 @@ const s = StyleSheet.create({
   greet: { ...IOS_TYPOGRAPHY.largeTitle, color: '#111' },
   greetSub: { ...IOS_TYPOGRAPHY.footnote, color: '#6B7280', marginTop: 2 },
   lastUpd: { ...IOS_TYPOGRAPHY.caption1, color: '#9CA3AF', marginTop: -4 },
+  cmdBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 50, paddingHorizontal: 16, paddingVertical: 8, marginTop: 8 },
+  cmdBannerText: { ...IOS_TYPOGRAPHY.footnote, color: '#22C55E', fontWeight: '600' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   liveBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 4 },
@@ -309,4 +364,6 @@ const s = StyleSheet.create({
   dryingAlertContent: { flex: 1, gap: 2 },
   dryingAlertMsg: { ...IOS_TYPOGRAPHY.footnote, fontWeight: '600' },
   dryingAlertAction: { ...IOS_TYPOGRAPHY.caption1, color: '#6B7280' },
+  staleBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF3C7', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#F59E0B' },
+  staleBannerText: { ...IOS_TYPOGRAPHY.footnote, color: '#D97706', fontWeight: '500', flex: 1 },
 });

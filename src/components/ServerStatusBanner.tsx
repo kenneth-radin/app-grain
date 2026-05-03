@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, AppState, AppStateStatus } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { grainApi } from '@/api';
@@ -12,8 +12,12 @@ const RETRY_DELAYS = [2000, 4000, 8000]; // exponential backoff for Render cold 
 
 async function healthCheckWithBackoff(): Promise<boolean> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const ok = await grainApi.health.check();
-    if (ok) return true;
+    try {
+      const ok = await grainApi.health.check();
+      if (ok) return true;
+    } catch {
+      // network error, retry
+    }
     if (attempt < MAX_RETRIES) {
       await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
     }
@@ -21,47 +25,76 @@ async function healthCheckWithBackoff(): Promise<boolean> {
   return false;
 }
 
-export default function ConnectionBanner() {
+type BannerVariant = 'reconnecting' | 'offline' | 'error';
+
+interface ServerStatusBannerProps {
+  variant: BannerVariant;
+}
+
+export default function ServerStatusBanner({ variant }: ServerStatusBannerProps) {
   const { isServerOnline, checkServerHealth } = useAppContext();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const ping = useCallback(async () => {
     setIsRetrying(true);
     const ok = await healthCheckWithBackoff();
     if (ok) {
-      // Update AppContext state so other consumers see the server is online
-      await checkServerHealth();
+      setRetryCount(0);
     } else {
-      // Ensure AppContext reflects offline after all retries exhausted
-      await checkServerHealth();
+      setRetryCount((c) => Math.min(c + 1, MAX_RETRIES));
     }
+    await checkServerHealth();
     setIsRetrying(false);
   }, [checkServerHealth]);
 
   useEffect(() => {
     ping();
     intervalRef.current = setInterval(ping, HEALTH_CHECK_INTERVAL);
+
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        ping();
+      }
+    });
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      subscription.remove();
     };
   }, [ping]);
 
-  if (isServerOnline) return null;
+  // Determine visual state
+  const isReconnecting = variant === 'reconnecting' || isRetrying;
+  const isFailed = retryCount >= MAX_RETRIES && !isRetrying;
+
+  if (isServerOnline && !isReconnecting) return null;
+
+  // Color: amber (reconnecting), orange (retrying), red (failed after 3 retries)
+  const bgColor = isFailed
+    ? '#EF4444'
+    : isReconnecting
+      ? '#F97316'
+      : '#f59e0b';
+
+  const icon = isRetrying
+    ? 'cloud-download-outline'
+    : isFailed
+      ? 'cloud-offline-outline'
+      : 'cloud-download-outline';
+
+  const message = isRetrying
+    ? 'Reconnecting to server…'
+    : isFailed
+      ? 'Cannot connect to server — Check your connection'
+      : 'Reconnecting to server...';
 
   return (
     <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
-      <View style={styles.banner}>
-        <Ionicons
-          name={isRetrying ? 'cloud-download-outline' : 'cloud-offline-outline'}
-          size={18}
-          color="#FFFFFF"
-        />
-        <Text style={styles.message}>
-          {isRetrying
-            ? 'Reconnecting to server…'
-            : 'Cannot connect to server — Check your connection'}
-        </Text>
+      <View style={[styles.banner, { backgroundColor: bgColor }]}>
+        <Ionicons name={icon as any} size={18} color="#FFFFFF" />
+        <Text style={styles.message}>{message}</Text>
         {!isRetrying && (
           <TouchableOpacity onPress={ping} style={styles.retryButton} activeOpacity={0.7}>
             <Text style={styles.retryText}>Retry</Text>
@@ -76,7 +109,6 @@ const styles = StyleSheet.create({
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EF4444',
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,

@@ -9,7 +9,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
 import { useAppContext } from '@/context/AppContext';
 import { useDevices } from '@/hooks';
@@ -21,11 +21,18 @@ const SETTINGS_KEY = 'grain_settings';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile } = useAuth();
   const { showToast } = useAppContext();
   const { devices } = useDevices();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Refresh profile on focus to sync with web admin changes
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [])
+  );
 
   // Load settings from AsyncStorage on mount
   useEffect(() => {

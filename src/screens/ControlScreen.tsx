@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,18 +15,34 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Header, Navigation, ModeToggle, CustomSlider, StatusBadge } from '@/components';
-import { grainApi } from '@/api';
+import { grainApi, isNetworkError } from '@/api';
 import type { Device } from '@/api';
+import { getDatabase, ref, set } from 'firebase/database';
 import { useDevices } from '@/hooks';
+import { useRealtimeSensor } from '@/hooks';
 import { useAppContext } from '@/context/AppContext';
 import { useAIPrediction, runPrediction } from '@/hooks/useAIPrediction';
 import type { SensorInput, AIPrediction } from '@/hooks/useAIPrediction';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
-import { DryerMode, DryerStatus } from '@/utils/enums';
+import { DryerMode, DryerStatus, StorageKeys } from '@/utils/enums';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { enqueueCommand } from '@/utils/commandQueue';
+
+// Persisted state keys for ControlScreen so state survives tab switches
+const PERSIST_KEYS = {
+  selectedDeviceId: 'control_selectedDeviceId',
+  mode: 'control_mode',
+  isRunning: 'control_isRunning',
+  temperature: 'control_temperature',
+  fanSpeed: 'control_fanSpeed',
+  fan1Status: 'control_fan1Status',
+  fan2Status: 'control_fan2Status',
+};
 
 export default function ControlScreen() {
   const { showToast } = useAppContext();
   const { devices, isLoading: devicesLoading } = useDevices();
+  const { isServerOnline, queuedCommandCount } = useAppContext();
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [mode, setMode] = useState<DryerMode>(DryerMode.Auto);
   const [isRunning, setIsRunning] = useState(false);
@@ -36,14 +52,129 @@ export default function ControlScreen() {
   const [aiAutoStopped, setAiAutoStopped] = useState(false);
   const [aiPrediction, setAiPrediction] = useState<AIPrediction | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [fan1Status, setFan1Status] = useState<'ON' | 'OFF'>('OFF');
+  const [fan2Status, setFan2Status] = useState<'ON' | 'OFF'>('OFF');
+  const [fan1Loading, setFan1Loading] = useState(false);
+  const [fan2Loading, setFan2Loading] = useState(false);
+  const [bothLoading, setBothLoading] = useState(false);
+  const [syncingUntil, setSyncingUntil] = useState<number | null>(null);
+  const [commandAck, setCommandAck] = useState(false);
+  const [commandTimeout, setCommandTimeout] = useState(false);
+  const [restored, setRestored] = useState(false);
+
+  // Restore persisted state on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.multiGet(Object.values(PERSIST_KEYS));
+        const map = Object.fromEntries(saved);
+        if (map[PERSIST_KEYS.mode]) setMode(map[PERSIST_KEYS.mode] as DryerMode);
+        if (map[PERSIST_KEYS.isRunning] === 'true') setIsRunning(true);
+        if (map[PERSIST_KEYS.temperature]) setTemperature(parseFloat(map[PERSIST_KEYS.temperature]));
+        if (map[PERSIST_KEYS.fanSpeed]) setFanSpeed(parseInt(map[PERSIST_KEYS.fanSpeed], 10));
+        if (map[PERSIST_KEYS.fan1Status]) setFan1Status(map[PERSIST_KEYS.fan1Status] as 'ON' | 'OFF');
+        if (map[PERSIST_KEYS.fan2Status]) setFan2Status(map[PERSIST_KEYS.fan2Status] as 'ON' | 'OFF');
+        if (map[PERSIST_KEYS.selectedDeviceId]) {
+          // Will be applied after devices load
+          setPendingDeviceId(map[PERSIST_KEYS.selectedDeviceId]);
+        }
+      } catch {}
+      setRestored(true);
+    })();
+  }, []);
+
+  // Persist state on change
+  useEffect(() => {
+    if (!restored) return;
+    AsyncStorage.multiSet([
+      [PERSIST_KEYS.mode, mode],
+      [PERSIST_KEYS.isRunning, String(isRunning)],
+      [PERSIST_KEYS.temperature, String(temperature)],
+      [PERSIST_KEYS.fanSpeed, String(fanSpeed)],
+      [PERSIST_KEYS.fan1Status, fan1Status],
+      [PERSIST_KEYS.fan2Status, fan2Status],
+      [PERSIST_KEYS.selectedDeviceId, selectedDevice?.deviceId || ''],
+    ]).catch(() => {});
+  }, [restored, mode, isRunning, temperature, fanSpeed, fan1Status, fan2Status, selectedDevice]);
+
+  const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
 
   const deviceId = selectedDevice?.deviceId;
 
+  const { commandAcknowledged } = useRealtimeSensor(deviceId);
+
+  // When Firebase acknowledges the command, show green check
   useEffect(() => {
-    if (devices.length > 0 && !selectedDevice) {
-      setSelectedDevice(devices[0]);
+    if (commandAcknowledged && syncingUntil !== null) {
+      setCommandAck(true);
+      setCommandTimeout(false);
+      setSyncingUntil(null);
+      const timer = setTimeout(() => setCommandAck(false), 5000);
+      return () => clearTimeout(timer);
     }
-  }, [devices, selectedDevice]);
+  }, [commandAcknowledged]);
+
+  // 30s timeout: if no acknowledgement, show "Device not responding"
+  useEffect(() => {
+    if (syncingUntil !== null) {
+      const remaining = syncingUntil - Date.now();
+      const timeoutMs = Math.max(remaining, 30000);
+      const timer = setTimeout(() => {
+        if (!commandAck) {
+          setCommandTimeout(true);
+          setSyncingUntil(null);
+          setTimeout(() => setCommandTimeout(false), 5000);
+        }
+      }, timeoutMs);
+      return () => clearTimeout(timer);
+    }
+  }, [syncingUntil]);
+
+  const handleFanControl = async (fan: 'FAN1' | 'FAN2' | 'ALL', action: 'ON' | 'OFF') => {
+    if (!deviceId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const prevFan1 = fan1Status;
+    const prevFan2 = fan2Status;
+
+    if (fan === 'FAN1' || fan === 'ALL') setFan1Status(action);
+    if (fan === 'FAN2' || fan === 'ALL') setFan2Status(action);
+    if (fan === 'FAN1') setFan1Loading(true);
+    if (fan === 'FAN2') setFan2Loading(true);
+    if (fan === 'ALL') setBothLoading(true);
+
+    try {
+      await grainApi.dryer.controlFan(deviceId, fan, action);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const label = fan === 'ALL' ? 's' : fan === 'FAN1' ? '1' : '2';
+      showToast(`Fan ${label} turned ${action.toLowerCase()}`, 'success');
+      // Show syncing indicator for 15 seconds while Firebase catches up
+      setSyncingUntil(Date.now() + 15000);
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast('Failed to control fan. Try again.', 'error');
+      setFan1Status(prevFan1);
+      setFan2Status(prevFan2);
+    } finally {
+      setFan1Loading(false);
+      setFan2Loading(false);
+      setBothLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (devices.length > 0) {
+      if (pendingDeviceId) {
+        const found = devices.find(d => d.deviceId === pendingDeviceId);
+        if (found) {
+          setSelectedDevice(found);
+          setPendingDeviceId(null);
+        }
+      } else if (!selectedDevice) {
+        setSelectedDevice(devices[0]);
+      }
+    }
+  }, [devices, selectedDevice, pendingDeviceId]);
 
   // AI prediction polling in AUTO mode when running
   useEffect(() => {
@@ -125,13 +256,30 @@ export default function ControlScreen() {
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           setIsControlling(true);
+          // Optimistic UI: update immediately
+          setIsRunning(false);
+          setSyncingUntil(Date.now() + 15000);
           try {
             await grainApi.dryer.stop(deviceId);
-            setIsRunning(false);
+            // Dual-write: REST for persistence, Firebase for speed
+            try {
+              const db = getDatabase();
+              await set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+                command: 'STOP',
+                timestamp: Date.now()
+              });
+            } catch (fbErr) { console.warn('[Firebase] Dual-write stop failed:', fbErr); }
             showToast('Dryer stopped successfully', 'success');
           } catch (err: any) {
-            Alert.alert('Error', err?.message || 'Failed to stop dryer');
-            showToast(err?.message || 'Failed to stop dryer', 'error');
+            // Revert on failure
+            setIsRunning(true);
+            if (isNetworkError(err)) {
+              await enqueueCommand({ id: `${Date.now()}-stop`, deviceId: deviceId!, type: 'stop', payload: {}, queuedAt: Date.now() });
+              showToast('Offline — stop command queued', 'warning');
+            } else {
+              Alert.alert('Error', err?.message || 'Failed to stop dryer');
+              showToast(err?.message || 'Failed to stop dryer', 'error');
+            }
           } finally {
             setIsControlling(false);
           }
@@ -157,15 +305,32 @@ export default function ControlScreen() {
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setIsControlling(true);
+            // Optimistic UI: update immediately
+            setIsRunning(true);
+            setAiAutoStopped(false);
+            setSyncingUntil(Date.now() + 15000);
             try {
               await grainApi.dryer.start(deviceId, mode, temperature, fanSpeed);
-              setIsRunning(true);
-              setAiAutoStopped(false);
+              // Dual-write: REST for persistence, Firebase for speed
+              try {
+                const db = getDatabase();
+                await set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+                  command: 'START', mode, temperature, fanSpeed,
+                  timestamp: Date.now()
+                });
+              } catch (fbErr) { console.warn('[Firebase] Dual-write start failed:', fbErr); }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               showToast('Dryer started successfully', 'success');
             } catch (err: any) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              showToast(err?.message || 'Failed to start dryer', 'error');
+              // Revert on failure
+              setIsRunning(false);
+              if (isNetworkError(err)) {
+                await enqueueCommand({ id: `${Date.now()}-start`, deviceId: deviceId!, type: 'start', payload: { mode, temperature, fanSpeed }, queuedAt: Date.now() });
+                showToast('Offline — start command queued', 'warning');
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                showToast(err?.message || 'Failed to start dryer', 'error');
+              }
             } finally {
               setIsControlling(false);
             }
@@ -189,6 +354,34 @@ export default function ControlScreen() {
             </View>
             <StatusBadge status={isRunning ? DryerStatus.Running : DryerStatus.Idle} size="md" />
           </View>
+
+          {/* Command Acknowledgement Banner */}
+          {commandAck ? (
+            <View style={styles.syncBanner}>
+              <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+              <Text style={styles.syncBannerText}>Command received by device</Text>
+            </View>
+          ) : commandTimeout ? (
+            <View style={[styles.syncBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+              <Ionicons name="alert-circle-outline" size={18} color="#EF4444" />
+              <Text style={[styles.syncBannerText, { color: '#EF4444' }]}>Device not responding</Text>
+            </View>
+          ) : syncingUntil !== null && Date.now() < syncingUntil && (
+            <View style={styles.syncBanner}>
+              <ActivityIndicator size="small" color="#22C55E" />
+              <Text style={styles.syncBannerText}>Syncing with device...</Text>
+            </View>
+          )}
+
+          {/* Offline / Queued Command Banner */}
+          {!isServerOnline && (
+            <View style={styles.offlineBanner}>
+              <Ionicons name="cloud-offline-outline" size={16} color="#F97316" />
+              <Text style={styles.offlineBannerText}>
+                Offline{queuedCommandCount > 0 ? ` — ${queuedCommandCount} command${queuedCommandCount > 1 ? 's' : ''} queued` : ' — commands will be queued'}
+              </Text>
+            </View>
+          )}
 
           {/* Device Selector */}
           {devices.length > 1 && (
@@ -389,6 +582,131 @@ export default function ControlScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {/* Fan Control — only in Manual mode */}
+              {mode === DryerMode.Manual ? (
+                <View style={styles.card}>
+                  <View style={styles.fanControlHeader}>
+                    <Ionicons name="aperture-outline" size={18} color="#6B7280" />
+                    <Text style={styles.cardLabel}>FAN CONTROL</Text>
+                  </View>
+
+                  {/* Fan 1 */}
+                  <View style={styles.fanRow}>
+                    <View style={styles.fanLabelRow}>
+                      <Ionicons name="aperture-outline" size={16} color={fan1Status === 'ON' ? '#22C55E' : '#9CA3AF'} />
+                      <Text style={styles.fanLabel}>Fan 1</Text>
+                      <View style={styles.fanStatusRow}>
+                        <View style={[styles.fanDot, fan1Status === 'ON' ? styles.fanDotOn : styles.fanDotOff]} />
+                        <Text style={[styles.fanStatusText, fan1Status === 'ON' ? styles.fanStatusOn : styles.fanStatusOff]}>
+                          {fan1Status}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.fanButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.fanButton, fan1Status === 'ON' && styles.fanButtonOnActive, (fan1Loading || bothLoading) && styles.buttonDisabled]}
+                        onPress={() => handleFanControl('FAN1', 'ON')}
+                        disabled={fan1Loading || bothLoading}
+                        activeOpacity={0.7}
+                      >
+                        {fan1Loading && fan1Status === 'ON' ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={[styles.fanButtonText, fan1Status === 'ON' && styles.fanButtonTextActive]}>ON</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.fanButton, fan1Status === 'OFF' && styles.fanButtonOffActive, (fan1Loading || bothLoading) && styles.buttonDisabled]}
+                        onPress={() => handleFanControl('FAN1', 'OFF')}
+                        disabled={fan1Loading || bothLoading}
+                        activeOpacity={0.7}
+                      >
+                        {fan1Loading && fan1Status === 'OFF' ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={[styles.fanButtonText, fan1Status === 'OFF' && styles.fanButtonTextActive]}>OFF</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Fan 2 */}
+                  <View style={styles.fanRow}>
+                    <View style={styles.fanLabelRow}>
+                      <Ionicons name="aperture-outline" size={16} color={fan2Status === 'ON' ? '#22C55E' : '#9CA3AF'} />
+                      <Text style={styles.fanLabel}>Fan 2</Text>
+                      <View style={styles.fanStatusRow}>
+                        <View style={[styles.fanDot, fan2Status === 'ON' ? styles.fanDotOn : styles.fanDotOff]} />
+                        <Text style={[styles.fanStatusText, fan2Status === 'ON' ? styles.fanStatusOn : styles.fanStatusOff]}>
+                          {fan2Status}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.fanButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.fanButton, fan2Status === 'ON' && styles.fanButtonOnActive, (fan2Loading || bothLoading) && styles.buttonDisabled]}
+                        onPress={() => handleFanControl('FAN2', 'ON')}
+                        disabled={fan2Loading || bothLoading}
+                        activeOpacity={0.7}
+                      >
+                        {fan2Loading && fan2Status === 'ON' ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={[styles.fanButtonText, fan2Status === 'ON' && styles.fanButtonTextActive]}>ON</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.fanButton, fan2Status === 'OFF' && styles.fanButtonOffActive, (fan2Loading || bothLoading) && styles.buttonDisabled]}
+                        onPress={() => handleFanControl('FAN2', 'OFF')}
+                        disabled={fan2Loading || bothLoading}
+                        activeOpacity={0.7}
+                      >
+                        {fan2Loading && fan2Status === 'OFF' ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={[styles.fanButtonText, fan2Status === 'OFF' && styles.fanButtonTextActive]}>OFF</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Both Fans */}
+                  <View style={styles.fanBothRow}>
+                    <TouchableOpacity
+                      style={[styles.fanBothButton, styles.fanBothOn, bothLoading && styles.buttonDisabled]}
+                      onPress={() => handleFanControl('ALL', 'ON')}
+                      disabled={fan1Loading || fan2Loading || bothLoading}
+                      activeOpacity={0.7}
+                    >
+                      {bothLoading && fan1Status === 'ON' ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.fanBothButtonText}>Turn Both ON</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.fanBothButton, styles.fanBothOff, bothLoading && styles.buttonDisabled]}
+                      onPress={() => handleFanControl('ALL', 'OFF')}
+                      disabled={fan1Loading || fan2Loading || bothLoading}
+                      activeOpacity={0.7}
+                    >
+                      {bothLoading && fan1Status === 'OFF' ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.fanBothOffButtonText}>Turn Both OFF</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.card}>
+                  <View style={styles.disabledOverlay}>
+                    <Ionicons name="lock-closed-outline" size={16} color="#9CA3AF" />
+                    <Text style={styles.disabledText}>Fan control is managed automatically in AUTO mode</Text>
+                  </View>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
@@ -418,6 +736,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(34,197,94,0.1)',
+    borderRadius: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  syncBannerText: {
+    ...IOS_TYPOGRAPHY.footnote,
+    color: '#22C55E',
+    fontWeight: '600',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(249,115,22,0.1)',
+    borderRadius: 50,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  offlineBannerText: {
+    ...IOS_TYPOGRAPHY.footnote,
+    color: '#F97316',
+    fontWeight: '600',
   },
   screenTitle: {
     ...IOS_TYPOGRAPHY.largeTitle,
@@ -679,5 +1027,116 @@ const styles = StyleSheet.create({
   sliderDisabled: {
     opacity: 0.4,
     pointerEvents: 'none',
+  },
+  fanControlHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  fanRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  fanLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  fanLabel: {
+    ...IOS_TYPOGRAPHY.callout,
+    fontWeight: '500',
+    color: '#111111',
+  },
+  fanStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  fanDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  fanDotOn: {
+    backgroundColor: '#22C55E',
+  },
+  fanDotOff: {
+    backgroundColor: '#9CA3AF',
+  },
+  fanStatusText: {
+    ...IOS_TYPOGRAPHY.caption1,
+    fontWeight: '600',
+  },
+  fanStatusOn: {
+    color: '#22C55E',
+  },
+  fanStatusOff: {
+    color: '#9CA3AF',
+  },
+  fanButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fanButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 50,
+    backgroundColor: '#F3F4F6',
+    minWidth: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanButtonOnActive: {
+    backgroundColor: '#22C55E',
+  },
+  fanButtonOffActive: {
+    backgroundColor: '#EF4444',
+  },
+  fanButtonText: {
+    ...IOS_TYPOGRAPHY.footnote,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  fanButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  fanBothRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  fanBothButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanBothOn: {
+    backgroundColor: '#22C55E',
+  },
+  fanBothOff: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.3)',
+  },
+  fanBothButtonText: {
+    ...IOS_TYPOGRAPHY.callout,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  fanBothOffButtonText: {
+    ...IOS_TYPOGRAPHY.callout,
+    fontWeight: '600',
+    color: '#EF4444',
   },
 });

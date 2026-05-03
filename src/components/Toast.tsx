@@ -1,16 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, StyleSheet } from 'react-native';
+import { View, Text, Animated, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppContext } from '@/context/AppContext';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
-
-interface ToastProps {
-  message?: string;
-  type?: 'success' | 'error' | 'info' | 'warning';
-  visible?: boolean;
-  duration?: number;
-  onHide?: () => void;
-}
 
 const TYPE_CONFIG: Record<string, { bg: string; text: string; icon: IoniconName; duration: number }> = {
   success: { bg: '#D1FAE5', text: '#059669', icon: 'checkmark-circle', duration: 2500 },
@@ -19,19 +12,14 @@ const TYPE_CONFIG: Record<string, { bg: string; text: string; icon: IoniconName;
   warning: { bg: '#FEF3C7', text: '#D97706', icon: 'warning', duration: 4000 },
 };
 
-export default function Toast({
-  message = '',
-  type = 'info',
-  visible = false,
-  duration,
-  onHide,
-}: ToastProps) {
+export default function Toast() {
+  const { toast, hideToast } = useAppContext();
   const opacity = useRef(new Animated.Value(0)).current;
-  const config = TYPE_CONFIG[type] || TYPE_CONFIG.info;
-  const autoDismiss = duration ?? config.duration;
+  const config = TYPE_CONFIG[toast.type] || TYPE_CONFIG.info;
+  const autoDismiss = config.duration;
 
   useEffect(() => {
-    if (visible) {
+    if (toast.visible) {
       Animated.timing(opacity, {
         toValue: 1,
         duration: 300,
@@ -43,29 +31,38 @@ export default function Toast({
           toValue: 0,
           duration: 300,
           useNativeDriver: true,
-        }).start(() => onHide?.());
+        }).start(() => hideToast());
       }, autoDismiss);
 
       return () => clearTimeout(timer);
+    } else {
+      opacity.setValue(0);
     }
-  }, [visible]);
+  }, [toast.visible]);
 
-  if (!visible) return null;
+  if (!toast.visible) return null;
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: config.bg, opacity }]}>
-      <Ionicons name={config.icon} size={18} color={config.text} />
-      <Text style={[styles.message, { color: config.text }]}>{message}</Text>
-    </Animated.View>
+    <View style={styles.wrapper} pointerEvents="none">
+      <Animated.View style={[styles.container, { backgroundColor: config.bg, opacity }]}>
+        <Ionicons name={config.icon} size={18} color={config.text} />
+        <Text style={[styles.message, { color: config.text }]}>{toast.message}</Text>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     position: 'absolute',
-    top: 60,
-    left: 16,
-    right: 16,
+    top: Platform.OS === 'ios' ? 60 : 40,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  container: {
+    marginHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -76,7 +73,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
-    zIndex: 9999,
   },
   message: {
     flex: 1,

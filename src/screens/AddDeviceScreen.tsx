@@ -68,7 +68,7 @@ export default function AddDeviceScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradient colors={GRADIENTS.dashboard} style={styles.gradient}>
-        <Header />
+        <Header showBack onBack={() => router.back()} />
         <View style={styles.content}>
           <View style={styles.iconCircle}>
             <Ionicons name="hardware-chip-outline" size={40} color="#22C55E" />
