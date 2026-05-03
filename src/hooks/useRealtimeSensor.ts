@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { ref, onValue, off } from 'firebase/database'
+import { ref, onValue, type Unsubscribe } from 'firebase/database'
 import { db } from '@/lib/firebase'
 import { DeviceStatus } from '@/utils/enums'
 import { isSensorData } from '@/utils/typeGuards'
@@ -26,12 +26,23 @@ export function useRealtimeSensor(deviceId?: string) {
   useEffect(() => {
     if (!deviceId || !db) return
 
+    // Reset state when deviceId changes to avoid stale data from previous device
+    setSensorData(null)
+    setIsOnline(false)
+    setLastUpdated(null)
+    setRemoteCommand(null)
+    setCommandAcknowledged(false)
+    prevStatusRef.current = null
+    lastCommandTimestampRef.current = 0
+
     const sensorRef = ref(db, `grain/devices/${deviceId}/sensors`)
     const statusRef = ref(db, `grain/devices/${deviceId}/status`)
     const commandRef = ref(db, `grain/devices/${deviceId}/lastCommand`)
     const executedRef = ref(db, `grain/commands/${deviceId}/executed`)
 
-    const unsubscribeSensor = onValue(sensorRef, (snapshot) => {
+    const unsubs: Unsubscribe[] = []
+
+    unsubs.push(onValue(sensorRef, (snapshot) => {
       const raw = snapshot.val()
       if (isSensorData(raw)) {
         setSensorData(raw)
@@ -49,32 +60,32 @@ export function useRealtimeSensor(deviceId?: string) {
       } else if (raw) {
         console.warn('[Firebase] Invalid sensor data shape:', raw)
       }
-    })
+    }))
 
-    const unsubscribeStatus = onValue(statusRef, (snapshot) => {
+    unsubs.push(onValue(statusRef, (snapshot) => {
       setIsOnline(snapshot.val() === DeviceStatus.Online)
-    })
+    }))
 
-    const unsubscribeCommand = onValue(commandRef, (snapshot) => {
+    unsubs.push(onValue(commandRef, (snapshot) => {
       const cmd = snapshot.val()
       if (cmd && cmd.action) {
         setRemoteCommand(cmd.action)
         lastCommandTimestampRef.current = cmd.timestamp ?? Date.now()
       }
-    })
+    }))
 
-    const unsubscribeExecuted = onValue(executedRef, (snapshot) => {
+    unsubs.push(onValue(executedRef, (snapshot) => {
       const data = snapshot.val()
       if (data?.executedAt > lastCommandTimestampRef.current) {
         setCommandAcknowledged(true)
       }
-    })
+    }))
 
     return () => {
-      off(sensorRef)
-      off(statusRef)
-      off(commandRef)
-      off(executedRef)
+      // Unsubscribe all 4 listeners reliably on deviceId change or unmount
+      for (const unsub of unsubs) {
+        unsub()
+      }
     }
   }, [deviceId])
 

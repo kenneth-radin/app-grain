@@ -9,6 +9,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   isReconnecting: boolean;
+  reconnectMessage: string | null;
   error: string | null;
 }
 
@@ -26,7 +27,7 @@ type AuthAction =
   | { type: 'AUTH_LOGOUT' }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_RECONNECTING'; payload: boolean }
-  | { type: 'OPTIMISTIC_AUTH' }
+  | { type: 'OPTIMISTIC_AUTH'; payload?: string }
   | { type: 'CLEAR_ERROR' };
 
 const initialState: AuthState = {
@@ -34,6 +35,7 @@ const initialState: AuthState = {
   isAuthenticated: false,
   isLoading: true,
   isReconnecting: false,
+  reconnectMessage: null,
   error: null,
 };
 
@@ -42,18 +44,18 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
     case 'AUTH_START':
       return { ...state, isLoading: true, error: null };
     case 'AUTH_SUCCESS':
-      return { ...state, isLoading: false, isAuthenticated: true, user: action.payload, error: null };
+      return { ...state, isLoading: false, isAuthenticated: true, isReconnecting: false, reconnectMessage: null, user: action.payload, error: null };
     case 'AUTH_ERROR':
       return { ...state, isLoading: false, isAuthenticated: false, user: null, error: action.payload };
     case 'AUTH_LOGOUT':
-      return { ...initialState, isLoading: false, isReconnecting: false };
+      return { ...initialState, isLoading: false, isReconnecting: false, reconnectMessage: null };
     case 'SET_LOADING':
       return { ...state, isLoading: action.payload };
     case 'SET_RECONNECTING':
       return { ...state, isReconnecting: action.payload };
     case 'OPTIMISTIC_AUTH':
       // Token exists but server unreachable — grant access optimistically
-      return { ...state, isLoading: false, isAuthenticated: true, isReconnecting: true };
+      return { ...state, isLoading: false, isAuthenticated: true, isReconnecting: true, reconnectMessage: action.payload ?? 'Connecting to server…' };
     case 'CLEAR_ERROR':
       return { ...state, error: null };
     default:
@@ -66,6 +68,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isReconnecting: boolean;
+  reconnectMessage: string | null;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
@@ -81,6 +84,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   isLoading: true,
   isReconnecting: false,
+  reconnectMessage: null,
   error: null,
   login: async () => {},
   register: async () => {},
@@ -91,8 +95,10 @@ const AuthContext = createContext<AuthContextType>({
   refreshProfile: async () => {},
 });
 
-const RESTORE_AUTH_TIMEOUT = ApiTimeout.Startup; // 10s timeout for startup auth check (vs 30s default)
-const RECONNECT_INTERVAL = 15000; // retry every 15s when reconnecting
+const RESTORE_AUTH_TIMEOUT = ApiTimeout.Startup; // 30s timeout for startup auth check
+const RECONNECT_INTERVAL = 10000; // retry every 10s when reconnecting
+const STARTUP_RETRIES = 3;
+const STARTUP_RETRY_DELAYS = [5000, 5000, 5000]; // 5s backoff between startup retries
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
@@ -110,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {
             dispatch({ type: 'AUTH_SUCCESS', payload: user });
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           if (isNetworkError(error)) {
             // Still unreachable, keep trying
             return;
@@ -136,32 +142,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const restoreAuth = async () => {
     try {
       const token = await SecureStore.getItemAsync(StorageKeys.AuthToken);
-      if (token) {
+      if (!token) {
+        dispatch({ type: 'AUTH_LOGOUT' });
+        return;
+      }
+
+      // Try up to STARTUP_RETRIES times with backoff before giving up
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < STARTUP_RETRIES; attempt++) {
         try {
-          // Use shorter timeout for startup — don't block the app for 30s
           const user = await grainApi.auth.me(RESTORE_AUTH_TIMEOUT);
-          // Try to fetch full profile including profileImage, bio, etc.
           try {
             const profile = await grainApi.profile.get();
             dispatch({ type: 'AUTH_SUCCESS', payload: { ...user, ...profile } });
           } catch {
             dispatch({ type: 'AUTH_SUCCESS', payload: user });
           }
-        } catch (error: any) {
-          // If network error (server unreachable), keep token and grant access optimistically
-          // Only logout on explicit 401 (invalid/expired token)
-          if (isNetworkError(error)) {
-            console.warn('Network error during auth restore — granting optimistic auth, will retry in background');
-            dispatch({ type: 'OPTIMISTIC_AUTH' });
-          } else {
-            // 401 or other server errors — token is invalid, logout
+          return; // success — done
+        } catch (error: unknown) {
+          lastError = error;
+          if (!isNetworkError(error)) {
+            // 401 or other server errors — token is invalid, logout immediately
             await SecureStore.deleteItemAsync(StorageKeys.AuthToken).catch(() => {});
             dispatch({ type: 'AUTH_LOGOUT' });
+            return;
+          }
+          // Network error — server may be cold-starting, retry with backoff
+          if (attempt < STARTUP_RETRIES - 1) {
+            dispatch({ type: 'OPTIMISTIC_AUTH', payload: `Connecting to server… (attempt ${attempt + 2}/${STARTUP_RETRIES})` });
+            await new Promise((r) => setTimeout(r, STARTUP_RETRY_DELAYS[attempt]));
           }
         }
-      } else {
-        dispatch({ type: 'AUTH_LOGOUT' });
       }
+
+      // All retries exhausted — grant optimistic auth and retry in background
+      console.warn('All startup auth retries failed — granting optimistic auth, will retry in background every 10s');
+      dispatch({ type: 'OPTIMISTIC_AUTH', payload: 'Connecting to server…' });
     } catch {
       dispatch({ type: 'AUTH_LOGOUT' });
     }
@@ -244,6 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: state.isAuthenticated,
         isLoading: state.isLoading,
         isReconnecting: state.isReconnecting,
+        reconnectMessage: state.reconnectMessage,
         error: state.error,
         login,
         register,

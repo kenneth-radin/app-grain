@@ -10,6 +10,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
+import type { StalenessReason } from '@/hooks';
 import { StatusBadge, Header, Navigation, GrainDryingSimulation, ProgressBar } from '@/components';
 import { grainApi } from '@/api';
 import { useAppContext } from '@/context/AppContext';
@@ -66,7 +67,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       return () => clearTimeout(timer);
     }
   }, [remoteCommand]);
-  const { latestData: polledData } = useSensorData(device?.deviceId, 30000);
+  const { latestData: polledData, stalenessReason: polledStaleness } = useSensorData(device?.deviceId, 30000);
   const [isControlling, setIsControlling] = useState(false);
 
   useFocusEffect(
@@ -86,6 +87,12 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const isVeryStale = lastUpdated
     ? (Date.now() - lastUpdated.getTime()) > 15 * 60 * 1000  // 15 min
     : false;
+  const isServerUnreachable = !fbConnected && polledStaleness === 'server_unreachable';
+
+  // Determine staleness reason: prefer REST polling staleness reason, fall back to Firebase lastUpdated
+  const effectiveStaleness: StalenessReason = polledStaleness ?? (
+    isStale ? (isServerUnreachable ? 'server_unreachable' : 'sensor_not_sending') : null
+  );
 
   const [commandHistory, setCommandHistory] = useState<{ action: string; time: string }[]>([]);
 
@@ -245,15 +252,24 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
 
           <View style={s.card}><ProgressBar progress={progress} timeRemaining={isRunning ? 'Estimating...' : '--'} showLabel={true} showTime={true} /></View>
 
-          {/* Stale Data Warning */}
-          {isStale && lastUpdated && (
-            <View style={s.staleBanner}>
-              <Ionicons name="warning-outline" size={18} color="#D97706" />
-              <Text style={s.staleBannerText}>
-                Sensor data may be outdated — last update: {Math.round((Date.now() - lastUpdated.getTime()) / 60000)} min ago
-              </Text>
-            </View>
-          )}
+          {/* Stale Data Warning — distinguish server offline vs sensor not sending */}
+          {(isStale && lastUpdated) || isServerUnreachable ? (
+            isServerUnreachable ? (
+              <View style={[s.staleBanner, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}>
+                <Ionicons name="cloud-offline-outline" size={18} color="#DC2626" />
+                <Text style={[s.staleBannerText, { color: '#DC2626' }]}>
+                  Server offline — unable to reach backend. Data may be outdated.
+                </Text>
+              </View>
+            ) : (
+              <View style={s.staleBanner}>
+                <Ionicons name="warning-outline" size={18} color="#D97706" />
+                <Text style={s.staleBannerText}>
+                  Sensor data may be outdated — last update: {lastUpdated ? `${Math.round((Date.now() - lastUpdated.getTime()) / 60000)} min ago` : 'unknown'}
+                </Text>
+              </View>
+            )
+          ) : null}
 
           <View style={s.sensorGrid}>
             {sensors.map((sen) => (

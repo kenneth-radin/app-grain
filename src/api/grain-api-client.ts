@@ -507,12 +507,13 @@ class GrainApiClient {
 
 export const grainApi = new GrainApiClient(process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api')
 
-/** Returns true if the error is a network/connectivity error (not a server response like 401). */
+/** Returns true if the error is a network/connectivity error (not a server response like 401).
+ *  Also treats HTTP 502/503 as offline — Render returns these during cold starts. */
 export function isNetworkError(error: unknown): boolean {
   if (error instanceof Error) {
     const code = (error as any).code
     const status = (error as any).status
-    return !status || status === 0 || code === 'NETWORK_ERROR' || code === 'ECONNABORTED'
+    return !status || status === 0 || status === 502 || status === 503 || code === 'NETWORK_ERROR' || code === 'ECONNABORTED'
   }
   return false
 }
