@@ -500,6 +500,17 @@ class GrainApiClient {
         return false
       }
     },
+
+    ping: async (): Promise<boolean> => {
+      try {
+        const response = await this.client.get('/ping', {
+          timeout: ApiTimeout.HealthCheck,
+        })
+        return response.status === 200
+      } catch {
+        return false
+      }
+    },
   }
 
   getBaseURL = (): string => this.baseURL

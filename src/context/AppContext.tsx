@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { grainApi } from '@/api';
+import { grainApi, isNetworkError } from '@/api';
 import type { User, Device, AlertItem } from '@/api';
 import { useAuth } from '@/hooks';
 import { flushQueue, getQueueCount } from '@/utils/commandQueue';
+
+export type ServerStatus = 'online' | 'offline' | 'unreachable' | 'reconnecting';
 
 interface ToastState {
   message: string;
@@ -17,6 +19,7 @@ interface AppContextType {
   settings: any;
   isLoading: boolean;
   isServerOnline: boolean;
+  serverStatus: ServerStatus;
   queuedCommandCount: number;
   toast: ToastState;
   handleLogout: () => Promise<void>;
@@ -33,6 +36,7 @@ const AppContext = createContext<AppContextType>({
   settings: null,
   isLoading: false,
   isServerOnline: true,
+  serverStatus: 'online',
   queuedCommandCount: 0,
   toast: { message: '', type: 'info', visible: false },
   handleLogout: async () => {},
@@ -50,6 +54,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isServerOnline, setIsServerOnline] = useState(true);
+  const [serverStatus, setServerStatus] = useState<ServerStatus>('online');
   const [queuedCommandCount, setQueuedCommandCount] = useState(0);
   const prevOnlineRef = useRef(true);
   const [toast, setToast] = useState<ToastState>({ message: '', type: 'info', visible: false });
@@ -80,11 +85,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [authLogout]);
 
   const checkServerHealth = useCallback(async () => {
+    setServerStatus('reconnecting');
     try {
-      const online = await grainApi.health.check();
-      setIsServerOnline(online);
-    } catch {
+      const ok = await grainApi.health.ping();
+      if (ok) {
+        setIsServerOnline(true);
+        setServerStatus('online');
+      } else {
+        setIsServerOnline(false);
+        setServerStatus('unreachable');
+      }
+    } catch (err: unknown) {
       setIsServerOnline(false);
+      if (isNetworkError(err)) {
+        const status = (err as any).status;
+        if (status === 502 || status === 503) {
+          setServerStatus('unreachable');
+        } else {
+          setServerStatus('offline');
+        }
+      } else {
+        setServerStatus('unreachable');
+      }
     }
   }, []);
 
@@ -131,6 +153,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         settings,
         isLoading,
         isServerOnline,
+        serverStatus,
         queuedCommandCount,
         toast,
         handleLogout,

@@ -38,13 +38,14 @@ export default function SensorCard({
   const config = SENSOR_CONFIG[type] || SENSOR_CONFIG.temperature;
   const statusConf = STATUS_CONFIG[status] || STATUS_CONFIG.normal;
   const displayUnit = unit || config.unit;
+  const displayValue = typeof value === 'number' ? parseFloat(value.toFixed(1)) : value;
 
   const content = (
     <View style={styles.container}>
       <View style={[styles.iconContainer, { backgroundColor: config.bg }]}>
         <Ionicons name={config.icon} size={22} color={config.color} />
       </View>
-      <Text style={[styles.value, { color: config.color }]}>{value}</Text>
+      <Text style={[styles.value, { color: config.color }]}>{displayValue}</Text>
       <Text style={styles.label}>{label || type} ({displayUnit})</Text>
       <Text style={[styles.status, { color: statusConf.color }]}>{statusConf.label}</Text>
     </View>

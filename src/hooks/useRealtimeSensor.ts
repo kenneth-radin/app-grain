@@ -20,11 +20,15 @@ export function useRealtimeSensor(deviceId?: string) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [remoteCommand, setRemoteCommand] = useState<string | null>(null)
   const [commandAcknowledged, setCommandAcknowledged] = useState(false)
+  const [isFallbackMode, setIsFallbackMode] = useState(!db)
   const prevStatusRef = useRef<string | null>(null)
   const lastCommandTimestampRef = useRef<number>(0)
 
   useEffect(() => {
-    if (!deviceId || !db) return
+    if (!deviceId || !db) {
+      setIsFallbackMode(true)
+      return
+    }
 
     // Reset state when deviceId changes to avoid stale data from previous device
     setSensorData(null)
@@ -32,6 +36,7 @@ export function useRealtimeSensor(deviceId?: string) {
     setLastUpdated(null)
     setRemoteCommand(null)
     setCommandAcknowledged(false)
+    setIsFallbackMode(false)
     prevStatusRef.current = null
     lastCommandTimestampRef.current = 0
 
@@ -89,5 +94,5 @@ export function useRealtimeSensor(deviceId?: string) {
     }
   }, [deviceId])
 
-  return { sensorData, isOnline, lastUpdated, remoteCommand, commandAcknowledged }
+  return { sensorData, isOnline, isFallbackMode, lastUpdated, remoteCommand, commandAcknowledged }
 }

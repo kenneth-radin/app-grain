@@ -5,14 +5,14 @@ import { ServerStatusBanner, ErrorBoundary } from '@/components';
 import { LoadingScreen } from '@/components/LoadingScreen';
 
 export default function AppLayout() {
-  const { isAuthenticated, isLoading, isReconnecting } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
 
   return (
     <View style={{ flex: 1 }}>
-      <ServerStatusBanner variant={isReconnecting ? 'reconnecting' : 'offline'} />
+      <ServerStatusBanner />
       <ErrorBoundary>
         <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <Stack.Screen name="dashboard" />

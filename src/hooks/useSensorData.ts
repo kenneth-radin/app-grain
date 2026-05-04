@@ -14,7 +14,10 @@ interface UseSensorDataResult {
   refetch: () => Promise<void>;
 }
 
-export function useSensorData(deviceId: string | undefined, pollInterval: number = 30000): UseSensorDataResult {
+const FALLBACK_INTERVAL = 10000;
+const DEFAULT_INTERVAL = 30000;
+
+export function useSensorData(deviceId: string | undefined, isFallbackMode: boolean = false): UseSensorDataResult {
   const [sensorData, setSensorData] = useState<SensorData[]>([]);
   const [latestData, setLatestData] = useState<SensorData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,6 +26,7 @@ export function useSensorData(deviceId: string | undefined, pollInterval: number
   const [stalenessReason, setStalenessReason] = useState<StalenessReason>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSuccessfulFetchRef = useRef<number>(0);
+  const pollInterval = isFallbackMode ? FALLBACK_INTERVAL : DEFAULT_INTERVAL;
 
   const fetchData = useCallback(async () => {
     if (!deviceId) return;
@@ -65,6 +69,7 @@ export function useSensorData(deviceId: string | undefined, pollInterval: number
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [fetchData, pollInterval]);
+
 
   return { sensorData, latestData, isLoading, error, isServerUnreachable, stalenessReason, refetch: fetchData };
 }

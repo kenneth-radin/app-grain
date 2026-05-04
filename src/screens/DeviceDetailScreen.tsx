@@ -41,7 +41,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const router = useRouter();
   const { showToast } = useAppContext();
   const { device, isLoading: deviceLoading, error: deviceError, refetch: deviceRefetch } = useDevice(deviceId);
-  const { sensorData: rtData, isOnline: rtOnline, lastUpdated, remoteCommand } = useRealtimeSensor(device?.deviceId);
+  const { sensorData: rtData, isOnline: rtOnline, isFallbackMode, lastUpdated, remoteCommand } = useRealtimeSensor(device?.deviceId);
 
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
@@ -67,7 +67,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       return () => clearTimeout(timer);
     }
   }, [remoteCommand]);
-  const { latestData: polledData, stalenessReason: polledStaleness } = useSensorData(device?.deviceId, 30000);
+  const { latestData: polledData, stalenessReason: polledStaleness } = useSensorData(device?.deviceId, isFallbackMode);
   const [isControlling, setIsControlling] = useState(false);
 
   useFocusEffect(
