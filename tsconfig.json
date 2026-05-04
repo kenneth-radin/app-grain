@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
-    "strict": false,
+    "strict": true,
     "jsx": "react-jsx",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
-    "customConditions": ["react-native", "react-native-strict-api"],
+    "customConditions": [
+      "react-native",
+      "react-native-strict-api"
+    ],
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
@@ -21,7 +24,9 @@
     "app/**/*.ts",
     "app/**/*.tsx",
     "src/**/*.ts",
-    "src/**/*.tsx"
+    "src/**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
   ],
   "exclude": [
     "node_modules"

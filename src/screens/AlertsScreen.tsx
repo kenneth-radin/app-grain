@@ -22,9 +22,15 @@ import { Header, Navigation, AlertCard } from '@/components';
 import { grainApi } from '@/api';
 import type { AIPrediction } from '@/api';
 import { useDevices } from '@/hooks';
-import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { AlertType } from '@/utils/enums';
+import { Routes } from '@/types/navigation';
+
+// Type-safe wrapper components
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
 
 interface AlertEntry {
   id: string | number;
@@ -55,7 +61,7 @@ export default function AlertsScreen() {
   const [criticalAlerts, setCriticalAlerts] = useState(true);
   const [warningAlerts, setWarningAlerts] = useState(true);
   const [infoAlerts, setInfoAlerts] = useState(true);
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
   const { devices } = useDevices();
 
   const ALERT_SETTINGS_KEY = 'grain_alert_settings';
@@ -117,6 +123,7 @@ export default function AlertsScreen() {
       devices.map(async (device) => {
         try {
           const sensorData = await grainApi.sensors.getLatestData(device.deviceId);
+          if (!sensorData) return;
           const prediction: AIPrediction = await grainApi.ai.predict({
             deviceId: device.deviceId,
             moisture: sensorData.moisture ?? 0,
@@ -179,7 +186,7 @@ export default function AlertsScreen() {
     handleMarkRead(alert.id);
     if (alert.deviceId) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      router.push(`/device/${alert.deviceId}` as any);
+      router.push(`/(app)/device/${alert.deviceId}` as const);
     }
   };
 
@@ -218,11 +225,11 @@ export default function AlertsScreen() {
   const filteredAlerts = filter === 'all' ? allAlerts : allAlerts.filter((a) => a.severity === filter);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.alerts} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.alerts} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <ScrollView
           style={styles.scrollView}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
@@ -323,10 +330,10 @@ export default function AlertsScreen() {
             </View>
           </View>
         </ScrollView>
-        </Animated.View>
+        </AnimatedView>
         <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

@@ -1,28 +1,31 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter, usePathname, type RelativePathString } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, createAnimatedComponent } from 'react-native-reanimated';
 import { IOS_TYPOGRAPHY } from '@/utils/constants';
+import { Routes } from '@/types/navigation';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+const AnimatedView = createAnimatedComponent(View);
 
 interface TabConfig {
   id: string;
   label: string;
   icon: IoniconName;
   activeIcon: IoniconName;
-  path: string;
+  path: RelativePathString;
 }
 
 const TABS: TabConfig[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'grid-outline', activeIcon: 'grid', path: '/(app)/dashboard' },
-  { id: 'control', label: 'Control', icon: 'hardware-chip-outline', activeIcon: 'hardware-chip', path: '/(app)/control' },
-  { id: 'ai-prediction', label: 'AI', icon: 'sparkles-outline', activeIcon: 'sparkles', path: '/(app)/ai-prediction' },
-  { id: 'analytics', label: 'Analytics', icon: 'bar-chart-outline', activeIcon: 'bar-chart', path: '/(app)/analytics' },
-  { id: 'alerts', label: 'Alerts', icon: 'notifications-outline', activeIcon: 'notifications', path: '/(app)/alerts' },
-  { id: 'settings', label: 'Settings', icon: 'settings-outline', activeIcon: 'settings', path: '/(app)/settings' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'grid-outline', activeIcon: 'grid', path: Routes.Dashboard },
+  { id: 'control', label: 'Control', icon: 'hardware-chip-outline', activeIcon: 'hardware-chip', path: Routes.Control },
+  { id: 'ai-prediction', label: 'AI', icon: 'sparkles-outline', activeIcon: 'sparkles', path: Routes.AIPrediction },
+  { id: 'analytics', label: 'Analytics', icon: 'bar-chart-outline', activeIcon: 'bar-chart', path: Routes.Analytics },
+  { id: 'alerts', label: 'Alerts', icon: 'notifications-outline', activeIcon: 'notifications', path: Routes.Alerts },
+  { id: 'settings', label: 'Settings', icon: 'settings-outline', activeIcon: 'settings', path: Routes.Settings },
 ];
 
 const ACTIVE_COLOR = '#22C55E';
@@ -50,9 +53,9 @@ function AnimatedIcon({ name, color, focused }: AnimatedIconProps) {
   }));
 
   return (
-    <Animated.View style={animatedStyle}>
+    <AnimatedView style={animatedStyle}>
       <Ionicons name={name} size={24} color={color} />
-    </Animated.View>
+    </AnimatedView>
   );
 }
 
@@ -72,7 +75,7 @@ export default function Navigation() {
         return (
           <TouchableOpacity
             key={tab.id}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(tab.path as any); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(tab.path); }}
             style={styles.tab}
             activeOpacity={0.7}
           >

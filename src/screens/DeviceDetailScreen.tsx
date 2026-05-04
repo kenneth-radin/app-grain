@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
@@ -11,35 +11,29 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
 import type { StalenessReason } from '@/hooks';
-import { StatusBadge, Header, Navigation, GrainDryingSimulation, ProgressBar } from '@/components';
-import { grainApi } from '@/api';
-import { useAppContext } from '@/context/AppContext';
-import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
+import { StatusBadge, Header, Navigation, GrainDryingSimulation, ProgressBar, DryingAlertBanner } from '@/components';
+import { grainApi, isNetworkError } from '@/api';
+import { useToast } from '@/context/AppContext';
+import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
 import { DeviceStatus, DryerStatus, DryerMode } from '@/utils/enums';
 import { analyzeDryingStatus } from '@/utils/dryingAlerts';
+import { triggerDryingAlertNotification } from '@/utils/pushNotifications';
+import { getGreeting, formatTimeAgo } from '@/utils/formatters';
+import { Routes } from '@/types/navigation';
+import { ref, set } from 'firebase/database';
+import { db } from '@/lib/firebase';
+import { enqueueCommand } from '@/utils/commandQueue';
+
+// Type-safe wrapper components
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
 
 interface DeviceDetailScreenProps { deviceId?: string; }
 
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
-function fmtUpdated(d: Date | null): string {
-  if (!d) return 'Never';
-  const s = Math.round((Date.now() - d.getTime()) / 1000);
-  if (s < 5) return 'Just now';
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
-}
-
 export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps) {
   const router = useRouter();
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
   const { device, isLoading: deviceLoading, error: deviceError, refetch: deviceRefetch } = useDevice(deviceId);
   const { sensorData: rtData, isOnline: rtOnline, isFallbackMode, lastUpdated, remoteCommand } = useRealtimeSensor(device?.deviceId);
 
@@ -81,18 +75,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const liveData = rtData || polledData;
   const fbConnected = rtData !== null;
 
-  const isStale = lastUpdated
-    ? (Date.now() - lastUpdated.getTime()) > 5 * 60 * 1000  // 5 min
-    : false;
-  const isVeryStale = lastUpdated
-    ? (Date.now() - lastUpdated.getTime()) > 15 * 60 * 1000  // 15 min
-    : false;
   const isServerUnreachable = !fbConnected && polledStaleness === 'server_unreachable';
-
-  // Determine staleness reason: prefer REST polling staleness reason, fall back to Firebase lastUpdated
-  const effectiveStaleness: StalenessReason = polledStaleness ?? (
-    isStale ? (isServerUnreachable ? 'server_unreachable' : 'sensor_not_sending') : null
-  );
 
   const [commandHistory, setCommandHistory] = useState<{ action: string; time: string }[]>([]);
 
@@ -113,12 +96,39 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           // Optimistic UI: update immediately
           addCommand('START (auto)');
           try {
-            await grainApi.dryer.start(deviceId, DryerMode.Auto);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Dryer started successfully', 'success');
-          } catch (err: any) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            showToast(err?.message || 'Failed to start dryer', 'error');
+            const restPromise = grainApi.dryer.start(deviceId, DryerMode.Auto);
+            const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+              command: 'START',
+              mode: DryerMode.Auto,
+              timestamp: Date.now(),
+            }) : Promise.reject(new Error('Firebase database not initialized'));
+            const results = await Promise.allSettled([restPromise, fbPromise]);
+            const [restResult, fbResult] = results;
+
+            if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Dryer started successfully', 'success');
+            } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
+              console.warn('[Firebase] Dual-write start failed:', fbResult.reason);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Dryer started — Firebase sync failed', 'warning');
+            } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
+              if (isNetworkError(restResult.reason)) {
+                await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode: DryerMode.Auto }, queuedAt: Date.now() });
+                showToast('Offline — start command queued', 'warning');
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                showToast(restResult.reason?.message || 'Failed to start dryer', 'error');
+              }
+            } else {
+              if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
+                await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode: DryerMode.Auto }, queuedAt: Date.now() });
+                showToast('Offline — start command queued (Firebase also failed)', 'warning');
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                showToast('REST & Firebase both failed', 'error');
+              }
+            }
           } finally { setIsControlling(false); }
         },
       },
@@ -138,73 +148,132 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           // Optimistic UI: update immediately
           addCommand('STOP');
           try {
-            await grainApi.dryer.stop(deviceId);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showToast('Dryer stopped successfully', 'success');
-          } catch (err: any) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            showToast(err?.message || 'Failed to stop dryer', 'error');
+            const restPromise = grainApi.dryer.stop(deviceId);
+            const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+              command: 'STOP',
+              timestamp: Date.now(),
+            }) : Promise.reject(new Error('Firebase database not initialized'));
+            const results = await Promise.allSettled([restPromise, fbPromise]);
+            const [restResult, fbResult] = results;
+
+            if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Dryer stopped successfully', 'success');
+            } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
+              console.warn('[Firebase] Dual-write stop failed:', fbResult.reason);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Dryer stopped — Firebase sync failed', 'warning');
+            } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
+              if (isNetworkError(restResult.reason)) {
+                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
+                showToast('Offline — stop command queued', 'warning');
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                showToast(restResult.reason?.message || 'Failed to stop dryer', 'error');
+              }
+            } else {
+              if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
+                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
+                showToast('Offline — stop command queued (Firebase also failed)', 'warning');
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                showToast('REST & Firebase both failed', 'error');
+              }
+            }
           } finally { setIsControlling(false); }
         },
       },
     ]);
   };
 
-  if (deviceLoading) {
-    return (
-      <SafeAreaView style={s.container} edges={['top', 'bottom']}>
-        <StatusBar style="dark" />
-        <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
-          <Header showBack onBack={() => router.back()} />
-          <View style={s.loadCenter}><ActivityIndicator size="large" color="#22C55E" /><Text style={s.loadText}>Loading device...</Text></View>
-        </LinearGradient>
-      </SafeAreaView>
-    );
-  }
-
-  if (deviceError || !device) {
-    return (
-      <SafeAreaView style={s.container} edges={['top', 'bottom']}>
-        <StatusBar style="dark" />
-        <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
-          <Header showBack onBack={() => router.back()} />
-          <View style={s.loadCenter}>
-            <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
-            <Text style={s.errorTxt}>{deviceError || 'Device not found'}</Text>
-            <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Text style={s.backBtnTxt}>Go Back</Text></TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </SafeAreaView>
-    );
-  }
-
+  // Calculate derived values and memoized values (must be before conditional returns)
   const moisture = liveData?.moisture ?? 18.5;
   const temp = liveData?.temperature ?? 65.5;
   const humidity = liveData?.humidity ?? 42.3;
   const energy = liveData?.energy ?? 2.4;
   const fanSpeed = liveData?.fanSpeed ?? 75;
   const status = liveData?.status ?? 'idle';
-  const isOnline = rtOnline || device.status === DeviceStatus.Online;
+  const isOnline = device ? (rtOnline || device.status === DeviceStatus.Online) : false;
   const isRunning = status === DryerStatus.Running || status === 'drying';
-  const targetM = 14;
-  const progress = moisture <= targetM ? 100 : Math.max(0, Math.round(((100 - moisture) / (100 - targetM)) * 100));
+  const targetM = DRYING.TARGET_MOISTURE;
+
+  const progress = useMemo(
+    () => moisture <= targetM ? 100 : Math.max(0, Math.round(((100 - moisture) / (100 - targetM)) * 100)),
+    [moisture, targetM],
+  );
+
+  const isStale = useMemo(
+    () => lastUpdated ? (Date.now() - lastUpdated.getTime()) > DRYING.STALE_THRESHOLD_MS : false,
+    [lastUpdated],
+  );
+
+  const isVeryStale = useMemo(
+    () => lastUpdated ? (Date.now() - lastUpdated.getTime()) > DRYING.VERY_STALE_THRESHOLD_MS : false,
+    [lastUpdated],
+  );
+
+  const effectiveStaleness: StalenessReason = useMemo(
+    () => polledStaleness ?? (isStale ? (isServerUnreachable ? 'server_unreachable' : 'sensor_not_sending') : null),
+    [polledStaleness, isStale, isServerUnreachable],
+  );
+
+  const dryingAlert = useMemo(
+    () => analyzeDryingStatus(moisture, targetM, temp),
+    [moisture, targetM, temp],
+  );
+
+  // Fire local push notification when drying alert changes to non-normal
+  useEffect(() => {
+    if (dryingAlert && dryingAlert.type !== 'normal') {
+      triggerDryingAlertNotification(dryingAlert, device?.deviceId);
+    }
+  }, [dryingAlert, device?.deviceId]);
 
   const staleVal = isVeryStale ? '- -' : null;
-  const sensors = [
+  const sensors = useMemo(() => [
     { icon: 'thermometer-outline', val: staleVal ?? `${temp} °C`, label: 'TEMPERATURE', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'water-outline', val: staleVal ?? `${humidity} %`, label: 'HUMIDITY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
     { icon: 'analytics-outline', val: staleVal ?? `${moisture} %`, label: 'MOISTURE', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
     { icon: 'flash-outline', val: staleVal ?? `${energy} kWh`, label: 'ENERGY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
     { icon: 'speedometer-outline', val: staleVal ?? `${fanSpeed} %`, label: 'FAN SPEED', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'pulse-outline', val: staleVal ?? status.toUpperCase(), label: 'STATUS', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
-  ];
+  ], [staleVal, temp, humidity, moisture, energy, fanSpeed, status]);
+
+  // Conditional returns must come after all hooks
+  if (deviceLoading) {
+    return (
+      <SafeAreaViewCompat style={s.container} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <LinearGradientCompat colors={GRADIENTS.dashboard} style={s.gradient}>
+          <Header showBack onBack={() => router.back()} />
+          <View style={s.loadCenter}><ActivityIndicator size="large" color="#22C55E" /><Text style={s.loadText}>Loading device...</Text></View>
+        </LinearGradientCompat>
+      </SafeAreaViewCompat>
+    );
+  }
+
+  if (deviceError || !device) {
+    return (
+      <SafeAreaViewCompat style={s.container} edges={['top', 'bottom']}>
+        <StatusBar style="dark" />
+        <LinearGradientCompat colors={GRADIENTS.dashboard} style={s.gradient}>
+          <Header showBack onBack={() => router.back()} />
+          <View style={s.loadCenter}>
+            <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+            <Text style={s.errorTxt}>{deviceError || 'Device not found'}</Text>
+            <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Text style={s.backBtnTxt}>Go Back</Text></TouchableOpacity>
+          </View>
+        </LinearGradientCompat>
+      </SafeAreaViewCompat>
+    );
+  }
 
   return (
-    <SafeAreaView style={s.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={s.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.dashboard} style={s.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.dashboard} style={s.gradient}>
         <Header showBack onBack={() => router.back()} />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <ScrollView style={s.scroll} contentContainerStyle={s.scrollC}>
           <View style={s.greetRow}>
             <View style={{ flex: 1 }}>
@@ -217,7 +286,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
             </View>
           </View>
 
-          <Text style={s.lastUpd}>Last updated: {fmtUpdated(lastUpdated)}{!fbConnected && polledData ? ' (polling)' : ''}</Text>
+          <Text style={s.lastUpd}>Last updated: {lastUpdated ? formatTimeAgo(lastUpdated) : '--'}{!fbConnected && polledData ? ' (polling)' : ''}</Text>
 
           {/* Command Status Banner */}
           {commandStatus && (
@@ -228,25 +297,9 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           )}
 
           {/* Drying Alert Banner */}
-          {(() => {
-            const alert = analyzeDryingStatus(moisture, targetM, temp);
-            if (alert.type === 'normal') return null;
-            const alertColors: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-              critical: { bg: '#FEE2E2', border: '#EF4444', text: '#DC2626', icon: 'alert-circle' },
-              warning: { bg: '#FEF9C3', border: '#F59E0B', text: '#D97706', icon: 'warning' },
-              info: { bg: '#EFF6FF', border: '#3B82F6', text: '#2563EB', icon: 'information-circle' },
-            };
-            const c = alertColors[alert.severity] || alertColors.info;
-            return (
-              <View style={[s.dryingAlertBanner, { backgroundColor: c.bg, borderColor: c.border }]}>
-                <Ionicons name={c.icon as any} size={20} color={c.text} />
-                <View style={s.dryingAlertContent}>
-                  <Text style={[s.dryingAlertMsg, { color: c.text }]}>{alert.message}</Text>
-                  <Text style={s.dryingAlertAction}>{alert.action}</Text>
-                </View>
-              </View>
-            );
-          })()}
+          {dryingAlert.type !== 'normal' && (
+            <DryingAlertBanner severity={dryingAlert.severity} message={dryingAlert.message} action={dryingAlert.action} />
+          )}
 
           <GrainDryingSimulation moisture={moisture} temperature={temp} isRunning={isRunning} targetMoisture={targetM} />
 
@@ -286,7 +339,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
             <View style={s.halfCard}><Text style={s.cardLbl}>MOISTURE</Text><Text style={s.cardVal}>{moisture} %</Text><Text style={s.cardSub}>Target: {targetM} %</Text></View>
           </View>
 
-          <TouchableOpacity style={s.aiInsightsBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(app)/ai-prediction' as any); }} activeOpacity={0.7}>
+          <TouchableOpacity style={s.aiInsightsBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIPrediction); }} activeOpacity={0.7}>
             <Ionicons name="sparkles" size={18} color="#22C55E" />
             <Text style={s.aiInsightsTxt}>AI Insights</Text>
             <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
@@ -320,13 +373,13 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
 
           <View style={s.bottomBanner}>
             <View style={s.bannerL}><View style={[s.bannerDot, { backgroundColor: isRunning ? '#22C55E' : '#9CA3AF' }]} /><Text style={s.bannerTxt}>{isRunning ? 'System Running' : 'System Idle'}</Text></View>
-            <TouchableOpacity style={s.ctrlBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: '/(app)/control', params: { deviceId: device.deviceId } } as any); }} activeOpacity={0.7}><Text style={s.ctrlBtnTxt}>Control</Text></TouchableOpacity>
+            <TouchableOpacity style={s.ctrlBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: '/(app)/control', params: { deviceId: device.deviceId } }); }} activeOpacity={0.7}><Text style={s.ctrlBtnTxt}>Control</Text></TouchableOpacity>
           </View>
         </ScrollView>
-        </Animated.View>
+        </AnimatedView>
         <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

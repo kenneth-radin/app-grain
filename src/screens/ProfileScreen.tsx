@@ -23,17 +23,23 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
-import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/context/AppContext';
 import { grainApi } from '@/api';
 import { Header, Navigation } from '@/components';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
+import { Routes } from '@/types/navigation';
+
+// Type-safe wrapper components
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
 
 const BIO_MAX_LENGTH = 200;
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, updateProfile, updateProfileImage, logout, refreshProfile } = useAuth();
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
 
   // Refresh profile on focus to sync with web admin changes
   useFocusEffect(
@@ -221,11 +227,11 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.settings} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.settings} style={styles.gradient}>
         <Header showBack onBack={() => router.back()} />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
             <Text style={styles.screenTitle}>My Profile</Text>
 
@@ -341,7 +347,7 @@ export default function ProfileScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.settingsRow} onPress={() => router.push('/(app)/alerts' as any)} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.settingsRow} onPress={() => router.push(Routes.Alerts)} activeOpacity={0.7}>
                 <View style={styles.settingsLeft}>
                   <Ionicons name="notifications-outline" size={20} color="#6B7280" />
                   <Text style={styles.settingsLabel}>Notifications</Text>
@@ -463,10 +469,10 @@ export default function ProfileScreen() {
               </View>
             </Modal>
           </ScrollView>
-        </Animated.View>
+        </AnimatedView>
         <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

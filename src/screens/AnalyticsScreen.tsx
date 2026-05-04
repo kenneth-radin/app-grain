@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -18,13 +18,11 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Header, Navigation, ErrorBoundary } from '@/components';
 import { grainApi } from '@/api';
-import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import type { AnalyticsOverview } from '@/api';
 
 type PeriodType = 'daily' | 'weekly' | 'monthly';
-
-const screenWidth = Dimensions.get('window').width - 48;
 
 const chartConfig = {
   backgroundColor: '#FFFFFF',
@@ -51,11 +49,13 @@ const fallbackData = {
 };
 
 export default function AnalyticsScreen() {
+  const { width: chartWidth } = useWindowDimensions();
+  const screenWidth = chartWidth - 48;
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodType>('weekly');
   const [refreshing, setRefreshing] = useState(false);
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {

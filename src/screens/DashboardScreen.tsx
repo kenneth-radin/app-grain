@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, createAnimatedComponent } from 'react-native-reanimated';
 import { ref, onValue, off } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import { useDevices } from '@/hooks';
-import { Header, Navigation, StatusBadge } from '@/components';
-import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
+import { Header, Navigation, StatusBadge, DryingAlertBanner } from '@/components';
+import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
 import { DeviceStatus } from '@/utils/enums';
 import { analyzeDryingStatus } from '@/utils/dryingAlerts';
+import { triggerDryingAlertNotification } from '@/utils/pushNotifications';
+import { Routes } from '@/types/navigation';
 import type { Device } from '@/api';
+
+// Type-safe wrapper components
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
 
 function SkeletonDeviceCards() {
   return (
@@ -46,6 +52,24 @@ export default function DashboardScreen() {
   const { devices: apiDevices, isLoading, error, refetch } = useDevices();
   const [devices, setDevices] = useState<Device[]>(apiDevices);
   const [refreshing, setRefreshing] = useState(false);
+
+  const dryingAlert = useMemo(() => {
+    const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
+    if (!onlineDevice) return null;
+    return analyzeDryingStatus(
+      (onlineDevice as any)?.latestMoisture ?? 20,
+      DRYING.TARGET_MOISTURE,
+      (onlineDevice as any)?.latestTemperature ?? 45,
+    );
+  }, [devices]);
+
+  // Fire local push notification when drying alert changes to non-normal
+  useEffect(() => {
+    if (dryingAlert && dryingAlert.type !== 'normal') {
+      const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
+      triggerDryingAlertNotification(dryingAlert, onlineDevice?.deviceId);
+    }
+  }, [dryingAlert, devices]);
 
   // Sync API devices into state
   useEffect(() => {
@@ -85,51 +109,30 @@ export default function DashboardScreen() {
 
   const handleDevicePress = (device: Device) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(`/(app)/device/${device.deviceId}` as any);
+    router.push(`/(app)/device/${device.deviceId}` as const);
   };
 
   const handleAddDevice = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/(app)/add-device' as any);
+    router.push(Routes.AddDevice);
   };
 
+const AnimatedView = createAnimatedComponent(View);
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.dashboard} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.dashboard} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView
             style={styles.scrollView}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
             contentContainerStyle={styles.scrollContent}
           >
             {/* Drying Alert Banner — uses real sensor data when available */}
-            {devices.some(d => d.status === DeviceStatus.Online) && (
-              (() => {
-                const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
-                const alert = analyzeDryingStatus(
-                  (onlineDevice as any)?.latestMoisture ?? 20,
-                  14,
-                  (onlineDevice as any)?.latestTemperature ?? 45,
-                );
-                if (alert.type === 'normal') return null;
-                const alertColors: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-                  critical: { bg: '#FEE2E2', border: '#EF4444', text: '#DC2626', icon: 'alert-circle' },
-                  warning: { bg: '#FEF9C3', border: '#F59E0B', text: '#D97706', icon: 'warning' },
-                  info: { bg: '#EFF6FF', border: '#3B82F6', text: '#2563EB', icon: 'information-circle' },
-                };
-                const c = alertColors[alert.severity] || alertColors.info;
-                return (
-                  <View style={[styles.dryingAlertBanner, { backgroundColor: c.bg, borderColor: c.border }]}>
-                    <Ionicons name={c.icon as any} size={20} color={c.text} />
-                    <View style={styles.dryingAlertContent}>
-                      <Text style={[styles.dryingAlertMsg, { color: c.text }]}>{alert.message}</Text>
-                      <Text style={styles.dryingAlertAction}>{alert.action}</Text>
-                    </View>
-                  </View>
-                );
-              })()
+            {dryingAlert && dryingAlert.type !== 'normal' && (
+              <DryingAlertBanner severity={dryingAlert.severity} message={dryingAlert.message} action={dryingAlert.action} />
             )}
 
             <View style={styles.titleRow}>
@@ -137,7 +140,7 @@ export default function DashboardScreen() {
               <View style={styles.titleActions}>
                 <TouchableOpacity
                   style={styles.profileButton}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(app)/profile' as any); }}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.Profile); }}
                   activeOpacity={0.7}
                 >
                   <Ionicons name="person-circle-outline" size={28} color="#22C55E" />
@@ -155,7 +158,7 @@ export default function DashboardScreen() {
             {/* AI Insights Card */}
             <TouchableOpacity
               style={styles.aiCard}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(app)/ai-prediction' as any); }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIPrediction); }}
               activeOpacity={0.7}
             >
               <View style={styles.aiCardLeft}>
@@ -218,7 +221,7 @@ export default function DashboardScreen() {
               ))
             )}
           </ScrollView>
-        </Animated.View>
+        </AnimatedView>
 
         {/* FAB - Floating Action Button */}
         <TouchableOpacity
@@ -230,8 +233,8 @@ export default function DashboardScreen() {
         </TouchableOpacity>
 
         <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

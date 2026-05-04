@@ -18,6 +18,7 @@ export interface User {
   bio?: string
   phoneNumber?: string
   location?: string
+  pushToken?: string | null
 }
 
 export interface Device {
@@ -199,27 +200,27 @@ class GrainApiClient {
 
   auth = {
     login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
-      const response = await this.client.post<ApiResponse<{ token: string; user: User }>>(
+      const response = await this.client.post<ApiResponse<{ user: User; accessToken: string }>>(
         '/auth/login',
         { email, password }
       )
-      const payload = (response.data.data || response.data) as { token: string; user: User } | undefined
-      if (payload?.token && payload?.user) {
-        await this.setStoredToken(payload.token)
-        return { token: payload.token, user: payload.user }
+      const payload = (response.data.data || response.data) as { user: User; accessToken: string } | undefined
+      if (payload?.accessToken && payload?.user) {
+        await this.setStoredToken(payload.accessToken)
+        return { token: payload.accessToken, user: payload.user }
       }
       throw new Error('Invalid login response')
     },
 
     register: async (name: string, email: string, password: string, role: string = UserRole.Farmer): Promise<{ token: string; user: User }> => {
-      const response = await this.client.post<ApiResponse<{ token: string; user: User }>>(
+      const response = await this.client.post<ApiResponse<{ user: User; accessToken: string }>>(
         '/auth/register',
         { name, email, password, role }
       )
-      const payload = (response.data.data || response.data) as { token: string; user: User } | undefined
-      if (payload?.token && payload?.user) {
-        await this.setStoredToken(payload.token)
-        return { token: payload.token, user: payload.user }
+      const payload = (response.data.data || response.data) as { user: User; accessToken: string } | undefined
+      if (payload?.accessToken && payload?.user) {
+        await this.setStoredToken(payload.accessToken)
+        return { token: payload.accessToken, user: payload.user }
       }
       throw new Error('Invalid register response')
     },
@@ -484,6 +485,14 @@ class GrainApiClient {
     }): Promise<any> => {
       const response = await this.client.post('/users/change-password', data)
       return response.data
+    },
+  }
+
+  // ─── Push Notifications ────────────────────────────────────
+
+  push = {
+    registerToken: async (pushToken: string): Promise<void> => {
+      await this.client.post('/push/token', { pushToken })
     },
   }
 

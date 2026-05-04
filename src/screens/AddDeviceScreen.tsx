@@ -15,13 +15,13 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { grainApi } from '@/api';
-import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/context/AppContext';
 import { Header } from '@/components';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 
 export default function AddDeviceScreen() {
   const router = useRouter();
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
   const [deviceId, setDeviceId] = useState('');
   const [location, setLocation] = useState('');
   const [deviceIdError, setDeviceIdError] = useState('');

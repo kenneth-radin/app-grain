@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   RefreshControl,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,14 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { LineChart } from 'react-native-chart-kit';
 import { Header, Navigation } from '@/components';
-import { grainApi } from '@/api';
-import type { AIPrediction as APIAIPrediction } from '@/api';
-import { useAppContext } from '@/context/AppContext';
-import { useAIPrediction, runPrediction } from '@/hooks/useAIPrediction';
-import type { SensorInput, AIPrediction } from '@/hooks/useAIPrediction';
-import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
-
-const screenWidth = Dimensions.get('window').width - 48;
+import { useAIPrediction } from '@/hooks/useAIPrediction';
+import type { AIPrediction } from '@/hooks/useAIPrediction';
+import { useToast } from '@/context/AppContext';
+import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
 
 const chartConfig = {
   backgroundColor: '#FFFFFF',
@@ -40,83 +36,22 @@ const chartConfig = {
 };
 
 export default function AIPredictionScreen() {
-  const [isLoading, setIsLoading] = useState(true);
+  const { width: screenWidth } = useWindowDimensions();
+  const chartWidth = screenWidth - 48;
   const [refreshing, setRefreshing] = useState(false);
-  const [prediction, setPrediction] = useState<AIPrediction | null>(null);
-  const [isOfflineFallback, setIsOfflineFallback] = useState(false);
-  const { showToast } = useAppContext();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchPrediction = useCallback(async () => {
-    try {
-      // Try server-side prediction first
-      const devices = await grainApi.devices.list();
-      if (devices && devices.length > 0) {
-        const device = devices[0];
-        const latest = await grainApi.sensors.getLatestData(device.deviceId);
-        if (latest) {
-          const input: SensorInput = {
-            deviceId: device.deviceId,
-            temperature: latest.temperature ?? 45,
-            humidity: latest.humidity ?? 50,
-            moisture: latest.moisture ?? 20,
-            fanSpeed: latest.fanSpeed ?? 70,
-            timeElapsed: 60,
-          };
-          // Try API, fall back to client-side
-          try {
-            const result = await grainApi.ai.predict(input);
-            setIsOfflineFallback(false);
-            setPrediction({
-              predictedMoisture30min: result.predictedMoisture30min,
-              estimatedMinutesToTarget: result.estimatedMinutesToTarget,
-              recommendation: result.recommendation,
-              recommendationType: result.recommendationType,
-              efficiencyScore: result.efficiencyScore,
-              confidence: result.confidence,
-              isDryingComplete: result.isDryingComplete,
-              projectedMoistureCurve: result.projectedCurve,
-              targetMoisture: result.targetMoisture,
-              algorithm: result.algorithm,
-            });
-          } catch {
-            // Server unavailable — use client-side prediction
-            setIsOfflineFallback(true);
-            setPrediction(runPrediction(input));
-          }
-        } else {
-          // No sensor data — use demo input
-          setIsOfflineFallback(true);
-          setPrediction(runPrediction({ deviceId: 'demo', temperature: 45, humidity: 50, moisture: 20, fanSpeed: 70, timeElapsed: 60 }));
-        }
-      } else {
-        setIsOfflineFallback(true);
-        setPrediction(runPrediction({ deviceId: 'demo', temperature: 45, humidity: 50, moisture: 20, fanSpeed: 70, timeElapsed: 60 }));
-      }
-    } catch {
-      // Complete fallback — client-side demo
-      setIsOfflineFallback(true);
-      setPrediction(runPrediction({ deviceId: 'demo', temperature: 45, humidity: 50, moisture: 20, fanSpeed: 70, timeElapsed: 60 }));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPrediction();
-    intervalRef.current = setInterval(fetchPrediction, 60000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [fetchPrediction]);
+  const { showToast } = useToast();
+  const { prediction, isLoading, isOfflineFallback, refetch } = useAIPrediction(undefined, {
+    pollInterval: DRYING.AI_POLL_INTERVAL_MS,
+    autoFetch: true,
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await fetchPrediction();
+    await refetch();
     setRefreshing(false);
     showToast('AI predictions refreshed', 'success');
-  }, [fetchPrediction, showToast]);
+  }, [refetch, showToast]);
 
   const formatTime = (minutes: number): string => {
     if (!isFinite(minutes) || minutes <= 0) return 'Complete';
@@ -187,7 +122,7 @@ export default function AIPredictionScreen() {
               </View>
             ) : prediction ? (
               <View>
-              <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); fetchPrediction(); }} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); refetch(); }} activeOpacity={0.7}>
                 <Ionicons name="refresh-outline" size={16} color="#22C55E" />
                 <Text style={styles.runButtonText}>Run Prediction</Text>
               </TouchableOpacity>
@@ -277,7 +212,7 @@ export default function AIPredictionScreen() {
                   </View>
                   <LineChart
                     data={curveChartData}
-                    width={screenWidth}
+                    width={chartWidth}
                     height={200}
                     chartConfig={{
                       ...chartConfig,
@@ -311,7 +246,7 @@ export default function AIPredictionScreen() {
               <View style={styles.loadingContainer}>
                 <Ionicons name="sparkles-outline" size={48} color="#6B7280" />
                 <Text style={styles.loadingText}>No prediction data available</Text>
-                <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); fetchPrediction(); }} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); refetch(); }} activeOpacity={0.7}>
                   <Ionicons name="refresh-outline" size={16} color="#22C55E" />
                   <Text style={styles.runButtonText}>Run Prediction</Text>
                 </TouchableOpacity>

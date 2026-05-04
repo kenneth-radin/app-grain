@@ -53,6 +53,17 @@ export enum SensorThreshold {
 export enum StorageKeys {
   AuthToken = 'grain_token',
   AlertSettings = 'grain_alert_settings',
+  CommandQueue = 'grain_command_queue',
+  Settings = 'grain_settings',
+  ControlState = 'grain_control_state',
+  // ControlScreen persisted state
+  ControlSelectedDeviceId = 'control_selectedDeviceId',
+  ControlMode = 'control_mode',
+  ControlIsRunning = 'control_isRunning',
+  ControlTemperature = 'control_temperature',
+  ControlFanSpeed = 'control_fanSpeed',
+  ControlFan1Status = 'control_fan1Status',
+  ControlFan2Status = 'control_fan2Status',
 }
 
 export enum ApiTimeout {

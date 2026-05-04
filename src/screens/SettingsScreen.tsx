@@ -11,18 +11,24 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
-import { useAppContext } from '@/context/AppContext';
+import { useToast } from '@/context/AppContext';
 import { useDevices } from '@/hooks';
 import { Header, Navigation, StatusBadge } from '@/components';
 import { DEFAULT_SETTINGS, GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { StorageKeys, UserRole, DeviceStatus, DryerStatus } from '@/utils/enums';
+import { Routes } from '@/types/navigation';
+
+// Type-safe wrapper components
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
 
 const SETTINGS_KEY = 'grain_settings';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout, refreshProfile } = useAuth();
-  const { showToast } = useAppContext();
+  const { showToast } = useToast();
   const { devices } = useDevices();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -82,11 +88,11 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.settings} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.settings} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <Text style={styles.screenTitle}>Settings</Text>
 
@@ -96,7 +102,7 @@ export default function SettingsScreen() {
               <Text style={styles.cardLabel}>ACCOUNT</Text>
               <TouchableOpacity
                 style={styles.settingRow}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/(app)/profile' as any); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.Profile); }}
                 activeOpacity={0.7}
               >
                 <View style={styles.settingInfo}>
@@ -228,10 +234,10 @@ export default function SettingsScreen() {
             <Text style={styles.versionText}>grAIn v{Constants.expoConfig?.version ?? '1.0.0'}</Text>
           </View>
         </ScrollView>
-        </Animated.View>
+        </AnimatedView>
         <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

@@ -164,40 +164,89 @@ export function runPrediction(input: SensorInput): AIPrediction {
 
 // ─── Hook ─────────────────────────────────────────────────
 
-export function useAIPrediction(sensorInput: SensorInput | null) {
+interface UseAIPredictionOptions {
+  pollInterval?: number; // ms, 0 = no polling
+  autoFetch?: boolean;   // if true, fetches devices + sensor data automatically
+}
+
+export function useAIPrediction(
+  sensorInput: SensorInput | null | undefined,
+  options?: UseAIPredictionOptions,
+) {
+  const { pollInterval = 0, autoFetch = false } = options || {};
   const [prediction, setPrediction] = useState<AIPrediction | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isOfflineFallback, setIsOfflineFallback] = useState(false);
 
   const compute = useCallback(async () => {
-    if (!sensorInput) return;
     setIsLoading(true);
     try {
-      // Try server-side prediction first
-      const result = await grainApi.ai.predict(sensorInput);
-      setPrediction({
-        predictedMoisture30min: result.predictedMoisture30min,
-        estimatedMinutesToTarget: result.estimatedMinutesToTarget,
-        recommendation: result.recommendation,
-        recommendationType: result.recommendationType,
-        efficiencyScore: result.efficiencyScore,
-        confidence: result.confidence,
-        isDryingComplete: result.isDryingComplete,
-        projectedMoistureCurve: result.projectedCurve,
-        targetMoisture: result.targetMoisture,
-        algorithm: result.algorithm,
-      });
+      let input: SensorInput | null = sensorInput || null;
+
+      // Auto-fetch sensor data if no input provided and autoFetch is enabled
+      if (!input && autoFetch) {
+        try {
+          const devices = await grainApi.devices.list();
+          if (devices && devices.length > 0) {
+            const device = devices[0];
+            const latest = await grainApi.sensors.getLatestData(device.deviceId);
+            if (latest) {
+              input = {
+                deviceId: device.deviceId,
+                temperature: latest.temperature ?? 45,
+                humidity: latest.humidity ?? 50,
+                moisture: latest.moisture ?? 20,
+                fanSpeed: latest.fanSpeed ?? 70,
+                timeElapsed: 60,
+              };
+            }
+          }
+        } catch {
+          // Device/sensor fetch failed — will use demo input below
+        }
+      }
+
+      // Demo fallback if still no input
+      if (!input) {
+        input = { deviceId: 'demo', temperature: 45, humidity: 50, moisture: 20, fanSpeed: 70, timeElapsed: 60 };
+      }
+
+      try {
+        const result = await grainApi.ai.predict(input);
+        setIsOfflineFallback(false);
+        setPrediction({
+          predictedMoisture30min: result.predictedMoisture30min,
+          estimatedMinutesToTarget: result.estimatedMinutesToTarget,
+          recommendation: result.recommendation,
+          recommendationType: result.recommendationType,
+          efficiencyScore: result.efficiencyScore,
+          confidence: result.confidence,
+          isDryingComplete: result.isDryingComplete,
+          projectedMoistureCurve: result.projectedCurve,
+          targetMoisture: result.targetMoisture,
+          algorithm: result.algorithm,
+        });
+      } catch {
+        // Server unavailable — use client-side prediction
+        setIsOfflineFallback(true);
+        setPrediction(runPrediction(input));
+      }
     } catch {
-      // Server unavailable — use client-side prediction
-      const result = runPrediction(sensorInput);
-      setPrediction(result);
+      // Complete fallback
+      setIsOfflineFallback(true);
+      setPrediction(runPrediction({ deviceId: 'demo', temperature: 45, humidity: 50, moisture: 20, fanSpeed: 70, timeElapsed: 60 }));
     } finally {
       setIsLoading(false);
     }
-  }, [sensorInput]);
+  }, [sensorInput, autoFetch]);
 
   useEffect(() => {
     compute();
-  }, [compute]);
+    if (pollInterval > 0) {
+      const id = setInterval(compute, pollInterval);
+      return () => clearInterval(id);
+    }
+  }, [compute, pollInterval]);
 
-  return { prediction, isLoading, recompute: compute };
+  return { prediction, isLoading, isOfflineFallback, refetch: compute };
 }

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 
 interface ChartProps {
@@ -20,8 +20,6 @@ function downsample<T>(arr: T[], max: number): T[] {
   const step = Math.ceil(arr.length / max);
   return arr.filter((_, i) => i % step === 0);
 }
-
-const screenWidth = Dimensions.get('window').width - 32;
 
 const chartConfig = {
   backgroundColor: '#FFFFFF',
@@ -49,6 +47,8 @@ function Chart({
   label = '',
   sparkline = false,
 }: ChartProps) {
+  const { width: chartWidth } = useWindowDimensions();
+  const screenWidth = chartWidth - 32;
   const maxPoints = sparkline ? SPARKLINE_MAX_POINTS : MAX_POINTS;
 
   const sampledData = useMemo(() => {
