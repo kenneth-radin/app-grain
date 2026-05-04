@@ -16,7 +16,7 @@ const TREND_CONFIG: Record<string, { color: string; icon: string }> = {
   stable: { color: '#6B7280', icon: '→' },
 };
 
-export default function StatItem({
+function StatItemInner({
   label = '',
   value = '--',
   unit = '',
@@ -44,6 +44,16 @@ export default function StatItem({
     </View>
   );
 }
+
+function statPropsEqual(prev: StatItemProps, next: StatItemProps) {
+  return prev.value === next.value
+    && prev.label === next.label
+    && prev.unit === next.unit
+    && prev.trend === next.trend
+    && prev.trendValue === next.trendValue;
+}
+
+export default React.memo(StatItemInner, statPropsEqual);
 
 const styles = StyleSheet.create({
   container: {

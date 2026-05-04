@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, AppState, AppStateStatus } fr
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { grainApi } from '@/api';
-import { useAppContext } from '@/context/AppContext';
-import type { ServerStatus } from '@/context/AppContext';
+import { useServerStatusContext } from '@/context/ServerStatusContext';
+import type { ServerStatus } from '@/context/ServerStatusContext';
 import { IOS_TYPOGRAPHY } from '@/utils/constants';
 
 const PING_INTERVAL = 10000;
@@ -49,7 +49,7 @@ const STATUS_CONFIG: Record<Exclude<ServerStatus, 'online'>, { bgColor: string; 
 };
 
 export default function ServerStatusBanner(_props: ServerStatusBannerProps) {
-  const { serverStatus, checkServerHealth } = useAppContext();
+  const { serverStatus, checkServerHealth } = useServerStatusContext();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const ping = useCallback(async () => {

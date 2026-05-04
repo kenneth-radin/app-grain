@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppContext } from '@/context/AppContext';
+import { useToastContext } from '@/context/ToastContext';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -13,7 +13,7 @@ const TYPE_CONFIG: Record<string, { bg: string; text: string; icon: IoniconName;
 };
 
 export default function Toast() {
-  const { toast, hideToast } = useAppContext();
+  const { toast, hideToast } = useToastContext();
   const opacity = useRef(new Animated.Value(0)).current;
   const config = TYPE_CONFIG[toast.type] || TYPE_CONFIG.info;
   const autoDismiss = config.duration;

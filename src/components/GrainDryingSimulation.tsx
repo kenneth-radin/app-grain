@@ -7,7 +7,9 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  cancelAnimation,
 } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
@@ -68,6 +70,7 @@ export default function GrainDryingSimulation({
   isRunning,
   targetMoisture = 14,
 }: GrainDryingProps) {
+  const isFocused = useIsFocused();
   const grains = useMemo(() => generateGrains(), []);
   const grainColor = getGrainColor(moisture);
   const progress = getProgressPercent(moisture, targetMoisture);
@@ -75,6 +78,13 @@ export default function GrainDryingSimulation({
   const steamOpacity = useSharedValue(1);
 
   useEffect(() => {
+    if (!isFocused) {
+      // Freeze animation when screen is not visible
+      cancelAnimation(steamOpacity);
+      steamOpacity.value = withTiming(0, { duration: 0 });
+      return;
+    }
+
     if (isRunning && moisture > targetMoisture) {
       steamOpacity.value = withRepeat(
         withSequence(
@@ -86,7 +96,7 @@ export default function GrainDryingSimulation({
     } else {
       steamOpacity.value = withTiming(1, { duration: 300 });
     }
-  }, [isRunning, moisture, targetMoisture]);
+  }, [isFocused, isRunning, moisture, targetMoisture]);
 
   const steamStyle = useAnimatedStyle(() => ({
     opacity: steamOpacity.value,

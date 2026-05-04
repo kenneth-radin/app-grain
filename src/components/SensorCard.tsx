@@ -27,7 +27,7 @@ const STATUS_CONFIG = {
   critical: { color: '#EF4444', label: '● Critical' },
 };
 
-export default function SensorCard({
+function SensorCardInner({
   type = 'temperature',
   value = 0,
   unit = '',
@@ -61,6 +61,17 @@ export default function SensorCard({
 
   return content;
 }
+
+function sensorPropsEqual(prev: SensorCardProps, next: SensorCardProps) {
+  return prev.value === next.value
+    && prev.label === next.label
+    && prev.status === next.status
+    && prev.type === next.type
+    && prev.unit === next.unit
+    && prev.onPress === next.onPress;
+}
+
+export default React.memo(SensorCardInner, sensorPropsEqual);
 
 const styles = StyleSheet.create({
   container: {

@@ -26,7 +26,7 @@ const SEVERITY_CONFIG: Record<string, { bg: string; border: string; text: string
   error: { bg: '#FEE2E2', border: '#FCA5A5', text: '#DC2626', icon: 'alert-circle', label: 'Error' },
 };
 
-export default function AlertCard({ alert, onDismiss }: AlertCardProps) {
+function AlertCardInner({ alert, onDismiss }: AlertCardProps) {
   const severity = alert.severity || 'info';
   const config = SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.info;
   const timestamp = alert.timestamp
@@ -68,6 +68,16 @@ export default function AlertCard({ alert, onDismiss }: AlertCardProps) {
     </View>
   );
 }
+
+function alertPropsEqual(prev: AlertCardProps, next: AlertCardProps) {
+  return prev.alert.id === next.alert.id
+    && prev.alert.severity === next.alert.severity
+    && prev.alert.title === next.alert.title
+    && prev.alert.message === next.alert.message
+    && prev.onDismiss === next.onDismiss;
+}
+
+export default React.memo(AlertCardInner, alertPropsEqual);
 
 const styles = StyleSheet.create({
   container: {

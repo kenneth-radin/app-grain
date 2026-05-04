@@ -24,7 +24,7 @@ const SIZE_CONFIG = {
   lg: { dot: 10, text: 14, px: 10, py: 5 },
 };
 
-export default function StatusBadge({
+function StatusBadgeInner({
   status = DeviceStatus.Online,
   label,
   size = 'md',
@@ -40,6 +40,14 @@ export default function StatusBadge({
     </View>
   );
 }
+
+function badgePropsEqual(prev: StatusBadgeProps, next: StatusBadgeProps) {
+  return prev.status === next.status
+    && prev.size === next.size
+    && prev.label === next.label;
+}
+
+export default React.memo(StatusBadgeInner, badgePropsEqual);
 
 const styles = StyleSheet.create({
   container: {

@@ -14,6 +14,13 @@ export interface RealtimeSensorData {
   updatedAt: number
 }
 
+function cleanupListeners(refs: React.MutableRefObject<Unsubscribe[]>) {
+  for (const unsub of refs.current) {
+    unsub()
+  }
+  refs.current = []
+}
+
 export function useRealtimeSensor(deviceId?: string) {
   const [sensorData, setSensorData] = useState<RealtimeSensorData | null>(null)
   const [isOnline, setIsOnline] = useState(false)
@@ -23,8 +30,12 @@ export function useRealtimeSensor(deviceId?: string) {
   const [isFallbackMode, setIsFallbackMode] = useState(!db)
   const prevStatusRef = useRef<string | null>(null)
   const lastCommandTimestampRef = useRef<number>(0)
+  const unsubsRef = useRef<Unsubscribe[]>([])
 
   useEffect(() => {
+    // Clean up any previous listeners before setting up new ones
+    cleanupListeners(unsubsRef)
+
     if (!deviceId || !db) {
       setIsFallbackMode(true)
       return
@@ -45,9 +56,7 @@ export function useRealtimeSensor(deviceId?: string) {
     const commandRef = ref(db, `grain/devices/${deviceId}/lastCommand`)
     const executedRef = ref(db, `grain/commands/${deviceId}/executed`)
 
-    const unsubs: Unsubscribe[] = []
-
-    unsubs.push(onValue(sensorRef, (snapshot) => {
+    unsubsRef.current.push(onValue(sensorRef, (snapshot) => {
       const raw = snapshot.val()
       if (isSensorData(raw)) {
         setSensorData(raw)
@@ -67,11 +76,11 @@ export function useRealtimeSensor(deviceId?: string) {
       }
     }))
 
-    unsubs.push(onValue(statusRef, (snapshot) => {
+    unsubsRef.current.push(onValue(statusRef, (snapshot) => {
       setIsOnline(snapshot.val() === DeviceStatus.Online)
     }))
 
-    unsubs.push(onValue(commandRef, (snapshot) => {
+    unsubsRef.current.push(onValue(commandRef, (snapshot) => {
       const cmd = snapshot.val()
       if (cmd && cmd.action) {
         setRemoteCommand(cmd.action)
@@ -79,7 +88,7 @@ export function useRealtimeSensor(deviceId?: string) {
       }
     }))
 
-    unsubs.push(onValue(executedRef, (snapshot) => {
+    unsubsRef.current.push(onValue(executedRef, (snapshot) => {
       const data = snapshot.val()
       if (data?.executedAt > lastCommandTimestampRef.current) {
         setCommandAcknowledged(true)
@@ -87,10 +96,7 @@ export function useRealtimeSensor(deviceId?: string) {
     }))
 
     return () => {
-      // Unsubscribe all 4 listeners reliably on deviceId change or unmount
-      for (const unsub of unsubs) {
-        unsub()
-      }
+      cleanupListeners(unsubsRef)
     }
   }, [deviceId])
 

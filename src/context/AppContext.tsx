@@ -1,16 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { grainApi, isNetworkError } from '@/api';
+import React, { createContext, useContext, useCallback } from 'react';
+import { grainApi } from '@/api';
 import type { User, Device, AlertItem } from '@/api';
 import { useAuth } from '@/hooks';
-import { flushQueue, getQueueCount } from '@/utils/commandQueue';
-
-export type ServerStatus = 'online' | 'offline' | 'unreachable' | 'reconnecting';
-
-interface ToastState {
-  message: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  visible: boolean;
-}
+import { DeviceProvider, useDeviceContext } from './DeviceContext';
+import { AlertProvider, useAlertContext } from './AlertContext';
+import { ToastProvider, useToastContext, type ToastState } from './ToastContext';
+import { ServerStatusProvider, useServerStatusContext } from './ServerStatusContext';
+export type { ServerStatus } from './ServerStatusContext';
 
 interface AppContextType {
   user: User | null;
@@ -19,7 +15,7 @@ interface AppContextType {
   settings: any;
   isLoading: boolean;
   isServerOnline: boolean;
-  serverStatus: ServerStatus;
+  serverStatus: import('./ServerStatusContext').ServerStatus;
   queuedCommandCount: number;
   toast: ToastState;
   handleLogout: () => Promise<void>;
@@ -46,29 +42,12 @@ const AppContext = createContext<AppContextType>({
   checkServerHealth: async () => {},
 });
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
+function AppContextInner({ children }: { children: React.ReactNode }) {
   const { logout: authLogout } = useAuth();
-  const [user, setUser] = useState<User | null>(null);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [settings, setSettings] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isServerOnline, setIsServerOnline] = useState(true);
-  const [serverStatus, setServerStatus] = useState<ServerStatus>('online');
-  const [queuedCommandCount, setQueuedCommandCount] = useState(0);
-  const prevOnlineRef = useRef(true);
-  const [toast, setToast] = useState<ToastState>({ message: '', type: 'info', visible: false });
-
-  const showToast = useCallback((message: string, type: ToastState['type'] = 'info') => {
-    setToast({ message, type, visible: true });
-    setTimeout(() => {
-      setToast((prev) => ({ ...prev, visible: false }));
-    }, 3000);
-  }, []);
-
-  const hideToast = useCallback(() => {
-    setToast((prev) => ({ ...prev, visible: false }));
-  }, []);
+  const deviceCtx = useDeviceContext();
+  const alertCtx = useAlertContext();
+  const toastCtx = useToastContext();
+  const serverCtx = useServerStatusContext();
 
   const handleLogout = useCallback(async () => {
     try {
@@ -76,95 +55,48 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Logout API error:', error);
     } finally {
-      setUser(null);
-      setAlerts([]);
-      setDevices([]);
-      setSettings(null);
+      deviceCtx.reset();
+      alertCtx.reset();
+      serverCtx.reset();
       authLogout();
     }
-  }, [authLogout]);
-
-  const checkServerHealth = useCallback(async () => {
-    setServerStatus('reconnecting');
-    try {
-      const ok = await grainApi.health.ping();
-      if (ok) {
-        setIsServerOnline(true);
-        setServerStatus('online');
-      } else {
-        setIsServerOnline(false);
-        setServerStatus('unreachable');
-      }
-    } catch (err: unknown) {
-      setIsServerOnline(false);
-      if (isNetworkError(err)) {
-        const status = (err as any).status;
-        if (status === 502 || status === 503) {
-          setServerStatus('unreachable');
-        } else {
-          setServerStatus('offline');
-        }
-      } else {
-        setServerStatus('unreachable');
-      }
-    }
-  }, []);
-
-  // Flush queued commands when server comes back online
-  useEffect(() => {
-    if (isServerOnline && !prevOnlineRef.current) {
-      flushQueue().then(() => getQueueCount().then(setQueuedCommandCount));
-    }
-    prevOnlineRef.current = isServerOnline;
-  }, [isServerOnline]);
-
-  // Keep queued count updated
-  useEffect(() => {
-    if (!isServerOnline) {
-      getQueueCount().then(setQueuedCommandCount);
-      const interval = setInterval(() => getQueueCount().then(setQueuedCommandCount), 5000);
-      return () => clearInterval(interval);
-    }
-  }, [isServerOnline]);
-
-  const refreshData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [userData, devicesData] = await Promise.allSettled([
-        grainApi.auth.getCurrentUser(),
-        grainApi.devices.list(),
-      ]);
-
-      if (userData.status === 'fulfilled') setUser(userData.value);
-      if (devicesData.status === 'fulfilled') setDevices(devicesData.value);
-    } catch (error) {
-      console.error('Refresh error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  }, [authLogout, deviceCtx.reset, alertCtx.reset, serverCtx.reset]);
 
   return (
     <AppContext.Provider
       value={{
-        user,
-        alerts,
-        devices,
-        settings,
-        isLoading,
-        isServerOnline,
-        serverStatus,
-        queuedCommandCount,
-        toast,
+        user: deviceCtx.user,
+        alerts: alertCtx.alerts,
+        devices: deviceCtx.devices,
+        settings: deviceCtx.settings,
+        isLoading: deviceCtx.isLoading,
+        isServerOnline: serverCtx.isServerOnline,
+        serverStatus: serverCtx.serverStatus,
+        queuedCommandCount: serverCtx.queuedCommandCount,
+        toast: toastCtx.toast,
         handleLogout,
-        showToast,
-        hideToast,
-        refreshData,
-        checkServerHealth,
+        showToast: toastCtx.showToast,
+        hideToast: toastCtx.hideToast,
+        refreshData: deviceCtx.refreshData,
+        checkServerHealth: serverCtx.checkServerHealth,
       }}
     >
       {children}
     </AppContext.Provider>
+  );
+}
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <DeviceProvider>
+      <AlertProvider>
+        <ToastProvider>
+          <ServerStatusProvider>
+            <AppContextInner>{children}</AppContextInner>
+          </ServerStatusProvider>
+        </ToastProvider>
+      </AlertProvider>
+    </DeviceProvider>
   );
 }
 
