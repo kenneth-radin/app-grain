@@ -11,11 +11,15 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { Header, Navigation, StatusBadge, CommandStatusBanner, DeviceSelector, DryerModeSelector, TemperatureSlider, FanControlPanel, AIAutoStopCard } from '@/components';
+import { Header, StatusBadge, CommandStatusBanner, DeviceSelector, DryerModeSelector, TemperatureSlider, FanControlPanel, AIAutoStopCard } from '@/components';
 import { useDevices, useDryerControl, useFanControl } from '@/hooks';
 import { useServerStatusContext } from '@/context/ServerStatusContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, COLORS } from '@/utils/constants';
 import { DryerMode, DryerStatus } from '@/utils/enums';
+
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
 
 export default function ControlScreen() {
   const { devices, isLoading: devicesLoading } = useDevices();
@@ -27,11 +31,11 @@ export default function ControlScreen() {
   const deviceId = dryer.selectedDevice?.deviceId;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.control} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.control} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={styles.titleRow}>
             <View>
@@ -108,10 +112,9 @@ export default function ControlScreen() {
             </>
           )}
         </ScrollView>
-        </Animated.View>
-        <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+        </AnimatedView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

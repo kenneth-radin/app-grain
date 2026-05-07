@@ -15,7 +15,11 @@ export function useDevices(): UseDevicesResult {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDevices = useCallback(async () => {
-    setIsLoading(true);
+    // Only show loading spinner on first load — subsequent fetches are silent
+    setIsLoading(prev => {
+      if (prev) return true; // already loading (first time)
+      return false;          // already have data — don't re-show skeleton
+    });
     setError(null);
     try {
       const data = await grainApi.devices.list();

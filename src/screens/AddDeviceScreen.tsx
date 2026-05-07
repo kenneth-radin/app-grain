@@ -19,6 +19,9 @@ import { useToast } from '@/context/AppContext';
 import { Header } from '@/components';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+
 export default function AddDeviceScreen() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -65,9 +68,9 @@ export default function AddDeviceScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.dashboard} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.dashboard} style={styles.gradient}>
         <Header showBack onBack={() => router.back()} />
         <View style={styles.content}>
           <View style={styles.iconCircle}>
@@ -129,8 +132,8 @@ export default function AddDeviceScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

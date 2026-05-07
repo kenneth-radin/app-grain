@@ -5,19 +5,15 @@ export function getGreeting(): string {
   return 'Good evening';
 }
 
-export function formatTimeAgo(date: Date): string {
-  const s = Math.round((Date.now() - date.getTime()) / 1000);
+export function formatTimeAgo(date: Date | string): string {
+  const ms = typeof date === 'string' ? new Date(date).getTime() : date.getTime();
+  const s = Math.round((Date.now() - ms) / 1000);
   if (s < 5) return 'Just now';
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
-export function formatMoisture(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
-
-export function formatTemperature(value: number): string {
-  return `${value.toFixed(1)}°C`;
-}

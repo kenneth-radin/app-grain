@@ -22,7 +22,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'grid-outline', activeIcon: 'grid', path: Routes.Dashboard },
   { id: 'control', label: 'Control', icon: 'hardware-chip-outline', activeIcon: 'hardware-chip', path: Routes.Control },
-  { id: 'ai-prediction', label: 'AI', icon: 'sparkles-outline', activeIcon: 'sparkles', path: Routes.AIPrediction },
+  { id: 'sessions', label: 'Sessions', icon: 'leaf-outline', activeIcon: 'leaf', path: Routes.Sessions },
   { id: 'analytics', label: 'Analytics', icon: 'bar-chart-outline', activeIcon: 'bar-chart', path: Routes.Analytics },
   { id: 'alerts', label: 'Alerts', icon: 'notifications-outline', activeIcon: 'notifications', path: Routes.Alerts },
   { id: 'settings', label: 'Settings', icon: 'settings-outline', activeIcon: 'settings', path: Routes.Settings },
@@ -75,7 +75,7 @@ export default function Navigation() {
         return (
           <TouchableOpacity
             key={tab.id}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(tab.path); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.navigate(tab.path); }}
             style={styles.tab}
             activeOpacity={0.7}
           >

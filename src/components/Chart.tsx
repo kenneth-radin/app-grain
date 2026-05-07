@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
-import { LineChart, BarChart } from 'react-native-chart-kit';
+import { LineChart as RawLineChart, BarChart as RawBarChart } from 'react-native-chart-kit';
+
+const LineChart = RawLineChart as React.ComponentType<any>;
+const BarChart = RawBarChart as React.ComponentType<any>;
 
 interface ChartProps {
   data: any[];

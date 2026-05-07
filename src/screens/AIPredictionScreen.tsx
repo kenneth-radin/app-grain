@@ -15,12 +15,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { LineChart } from 'react-native-chart-kit';
-import { Header, Navigation } from '@/components';
+import { LineChart as RawLineChart } from 'react-native-chart-kit';
+import { Header } from '@/components';
 import { useAIPrediction } from '@/hooks/useAIPrediction';
 import type { AIPrediction } from '@/hooks/useAIPrediction';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
+
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
+const LineChart = RawLineChart as React.ComponentType<any>;
 
 const chartConfig = {
   backgroundColor: '#FFFFFF',
@@ -93,11 +98,11 @@ export default function AIPredictionScreen() {
       };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.analytics} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.analytics} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView
             style={styles.scrollView}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
@@ -253,10 +258,9 @@ export default function AIPredictionScreen() {
               </View>
             )}
           </ScrollView>
-        </Animated.View>
-        <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+        </AnimatedView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

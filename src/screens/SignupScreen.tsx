@@ -23,6 +23,9 @@ import { grainApi } from '@/api';
 import { validateEmail } from '@/utils/validators';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+
 export default function SignupScreen() {
   const { login } = useAuth();
   const router = useRouter();
@@ -72,7 +75,10 @@ export default function SignupScreen() {
       router.replace('/(app)/dashboard');
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const message = err?.message || 'Registration failed. Please try again.';
+      const status = err?.status;
+      const message = status === 500
+        ? 'Server is temporarily unavailable. Please try again.'
+        : err?.message || 'Registration failed. Please try again.';
       setError(message);
     } finally {
       setIsLoading(false);
@@ -80,9 +86,9 @@ export default function SignupScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.login} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.login} style={styles.gradient}>
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -223,8 +229,8 @@ export default function SignupScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

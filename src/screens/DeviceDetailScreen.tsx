@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
 import type { StalenessReason } from '@/hooks';
-import { StatusBadge, Header, Navigation, GrainDryingSimulation, ProgressBar, DryingAlertBanner } from '@/components';
+import { StatusBadge, Header, GrainDryingSimulation, ProgressBar, DryingAlertBanner } from '@/components';
 import { grainApi, isNetworkError } from '@/api';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
@@ -377,7 +377,6 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           </View>
         </ScrollView>
         </AnimatedView>
-        <Navigation />
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );

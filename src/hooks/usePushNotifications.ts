@@ -44,7 +44,6 @@ export function usePushNotifications() {
       // Send token to backend
       try {
         await grainApi.push.registerToken(token);
-        console.log('[usePushNotifications] Push token registered:', token);
       } catch (err) {
         console.warn('[usePushNotifications] Failed to register token with backend:', err);
       }
@@ -66,13 +65,9 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Listen for incoming notifications
+  // Listen for incoming notifications (foreground banner only — no action needed)
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener((notification) => {
-      const data = notification.request.content.data;
-      console.log('[usePushNotifications] Notification received:', data);
-    });
-
+    const subscription = Notifications.addNotificationReceivedListener(() => {});
     return () => subscription.remove();
   }, []);
 
@@ -82,7 +77,9 @@ export function usePushNotifications() {
       const data = response.notification.request.content.data;
 
       // Navigate based on notification data
-      if (data?.deviceId) {
+      if (data?.type === 'drying_complete' || data?.type === 'session_started') {
+        router.push('/(app)/sessions' as any);
+      } else if (data?.deviceId) {
         router.push(`/(app)/device/${data.deviceId}` as const);
       } else if (data?.screen === 'alerts') {
         router.push(Routes.Alerts);

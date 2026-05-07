@@ -7,20 +7,13 @@ import { ref, set } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import { useRealtimeSensor } from './useRealtimeSensor';
 import { useToastContext } from '@/context/ToastContext';
-import { useAIPrediction, runPrediction } from './useAIPrediction';
+import { useDryingSession } from '@/context/DryingSessionContext';
+import { runPrediction } from './useAIPrediction';
 import type { SensorInput, AIPrediction } from './useAIPrediction';
 import { DRYING } from '@/utils/constants';
-import { DryerMode, DryerStatus, StorageKeys } from '@/utils/enums';
+import { DryerMode, StorageKeys } from '@/utils/enums';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueueCommand } from '@/utils/commandQueue';
-
-const PERSIST_KEYS = [
-  StorageKeys.ControlMode,
-  StorageKeys.ControlIsRunning,
-  StorageKeys.ControlTemperature,
-  StorageKeys.ControlFanSpeed,
-  StorageKeys.ControlSelectedDeviceId,
-];
 
 interface DryerControlState {
   mode: DryerMode;
@@ -55,9 +48,9 @@ export type UseDryerControlReturn = DryerControlState & DryerControlActions & {
 
 export function useDryerControl(devices: Device[], devicesLoading: boolean): UseDryerControlReturn {
   const { showToast } = useToastContext();
+  const sessionCtx = useDryingSession();
 
   const [mode, setMode] = useState<DryerMode>(DryerMode.Auto);
-  const [isRunning, setIsRunning] = useState(false);
   const [temperature, setTemperature] = useState(55);
   const [fanSpeed, setFanSpeed] = useState(75);
   const [isControlling, setIsControlling] = useState(false);
@@ -81,7 +74,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
       try {
         const keys = [
           StorageKeys.ControlMode,
-          StorageKeys.ControlIsRunning,
           StorageKeys.ControlTemperature,
           StorageKeys.ControlFanSpeed,
           StorageKeys.ControlSelectedDeviceId,
@@ -89,7 +81,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         const saved = await AsyncStorage.multiGet(keys);
         const map = Object.fromEntries(saved);
         if (map[StorageKeys.ControlMode]) setMode(map[StorageKeys.ControlMode] as DryerMode);
-        if (map[StorageKeys.ControlIsRunning] === 'true') setIsRunning(true);
         if (map[StorageKeys.ControlTemperature]) setTemperature(parseFloat(map[StorageKeys.ControlTemperature]));
         if (map[StorageKeys.ControlFanSpeed]) setFanSpeed(parseInt(map[StorageKeys.ControlFanSpeed], 10));
         if (map[StorageKeys.ControlSelectedDeviceId]) {
@@ -107,12 +98,11 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     if (!restored) return;
     AsyncStorage.multiSet([
       [StorageKeys.ControlMode, mode],
-      [StorageKeys.ControlIsRunning, String(isRunning)],
       [StorageKeys.ControlTemperature, String(temperature)],
       [StorageKeys.ControlFanSpeed, String(fanSpeed)],
       [StorageKeys.ControlSelectedDeviceId, selectedDevice?.deviceId || ''],
     ]).catch(() => {});
-  }, [restored, mode, isRunning, temperature, fanSpeed, selectedDevice]);
+  }, [restored, mode, temperature, fanSpeed, selectedDevice]);
 
   // Resolve pending device when devices load
   useEffect(() => {
@@ -155,6 +145,9 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
       return () => clearTimeout(timer);
     }
   }, [syncingUntil]);
+
+  // Derive isRunning from shared context — true when context has an active session for this device
+  const isRunning = sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId;
 
   // AI prediction polling in AUTO mode when running
   useEffect(() => {
@@ -211,14 +204,15 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const autoStopDryer = useCallback(async () => {
     if (!deviceId) return;
     setAiAutoStopped(true);
-    try {
-      await grainApi.dryer.stop(deviceId);
-      setIsRunning(false);
-      Alert.alert('Drying Complete', 'Drying complete — dryer stopped by AI');
-    } catch (err: any) {
-      console.error('AI auto-stop failed:', err);
+    const ok = await sessionCtx.stopDrying('complete');
+    if (ok) {
+      showToast('Drying complete — dryer stopped by AI', 'success');
+    } else {
+      const msg = sessionCtx.error || 'Failed to auto-stop dryer';
+      setError(msg);
+      showToast(msg, 'error');
     }
-  }, [deviceId]);
+  }, [deviceId, sessionCtx, showToast]);
 
   const handleStopDryer = useCallback(() => {
     if (!deviceId) {
@@ -233,42 +227,24 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           setIsControlling(true);
-          setIsRunning(false);
           setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
           try {
-            const restPromise = grainApi.dryer.stop(deviceId);
-            const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-              command: 'STOP',
-              timestamp: Date.now(),
-            }) : Promise.reject(new Error('Firebase database not initialized'));
-            const results = await Promise.allSettled([restPromise, fbPromise]);
-            const [restResult, fbResult] = results;
-
-            if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
+            // Push stop command to Firebase for instant ESP32 pickup
+            if (db) {
+              set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+                command: 'STOP', timestamp: Date.now(),
+              }).catch(() => {});
+            }
+            const ok = await sessionCtx.stopDrying('complete');
+            if (ok) {
               showToast('Dryer stopped successfully', 'success');
-            } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
-              console.warn('[Firebase] Dual-write stop failed:', fbResult.reason);
-              showToast('Dryer stopped — Firebase sync failed', 'warning');
-            } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
-              setIsRunning(true);
-              if (isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId: deviceId!, type: 'stop', payload: {}, queuedAt: Date.now() });
+            } else {
+              const msg = sessionCtx.error || 'Failed to stop dryer';
+              if (isNetworkError({ status: 0 })) {
+                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
                 showToast('Offline — stop command queued', 'warning');
               } else {
-                Alert.alert('Error', restResult.reason?.message || 'Failed to stop dryer');
-                showToast(restResult.reason?.message || 'Failed to stop dryer', 'error');
-              }
-            } else {
-              setIsRunning(true);
-              if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId: deviceId!, type: 'stop', payload: {}, queuedAt: Date.now() });
-                showToast('Offline — stop command queued (Firebase also failed)', 'warning');
-              } else if (restResult.status === 'rejected') {
-                Alert.alert('Error', restResult.reason?.message || 'Failed to stop dryer');
-                showToast('REST & Firebase both failed', 'error');
-              } else {
-                Alert.alert('Error', 'Failed to stop dryer');
-                showToast('REST & Firebase both failed', 'error');
+                showToast(msg, 'error');
               }
             }
           } finally {
@@ -277,7 +253,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         },
       },
     ]);
-  }, [deviceId, showToast]);
+  }, [deviceId, sessionCtx, showToast]);
 
   const handleStartDryer = useCallback(() => {
     if (!deviceId) {
@@ -296,45 +272,29 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setIsControlling(true);
-            setIsRunning(true);
             setAiAutoStopped(false);
             setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
             try {
-              const restPromise = grainApi.dryer.start(deviceId, mode, temperature, fanSpeed);
-              const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-                command: 'START', mode, temperature, fanSpeed,
-                timestamp: Date.now(),
-              }) : Promise.reject(new Error('Firebase database not initialized'));
-              const results = await Promise.allSettled([restPromise, fbPromise]);
-              const [restResult, fbResult] = results;
-
-              if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
+              // Push start command to Firebase for instant ESP32 pickup
+              if (db) {
+                set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+                  command: 'START', mode, temperature, fanSpeed, timestamp: Date.now(),
+                }).catch(() => {});
+              }
+              const session = await sessionCtx.startDrying({
+                deviceId, mode, temperature, fanSpeed,
+              });
+              if (session) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 showToast('Dryer started successfully', 'success');
-              } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
-                console.warn('[Firebase] Dual-write start failed:', fbResult.reason);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                showToast('Dryer started — Firebase sync failed', 'warning');
-              } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
-                setIsRunning(false);
-                if (isNetworkError(restResult.reason)) {
-                  await enqueueCommand({ id: `${Date.now()}-start`, deviceId: deviceId!, type: 'start', payload: { mode, temperature, fanSpeed }, queuedAt: Date.now() });
+              } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                const msg = sessionCtx.error || 'Failed to start dryer';
+                if (msg.toLowerCase().includes('unavailable') || msg.toLowerCase().includes('connection')) {
+                  await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode, temperature, fanSpeed }, queuedAt: Date.now() });
                   showToast('Offline — start command queued', 'warning');
                 } else {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  showToast(restResult.reason?.message || 'Failed to start dryer', 'error');
-                }
-              } else {
-                setIsRunning(false);
-                if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
-                  await enqueueCommand({ id: `${Date.now()}-start`, deviceId: deviceId!, type: 'start', payload: { mode, temperature, fanSpeed }, queuedAt: Date.now() });
-                  showToast('Offline — start command queued (Firebase also failed)', 'warning');
-                } else if (restResult.status === 'rejected') {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  showToast('REST & Firebase both failed', 'error');
-                } else {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  showToast('REST & Firebase both failed', 'error');
+                  showToast(msg, 'error');
                 }
               }
             } finally {
@@ -344,7 +304,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         },
       ],
     );
-  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, showToast]);
+  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast]);
 
   return {
     mode,

@@ -13,7 +13,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
 import { useToast } from '@/context/AppContext';
 import { useDevices } from '@/hooks';
-import { Header, Navigation, StatusBadge } from '@/components';
+import { Header, StatusBadge } from '@/components';
 import { DEFAULT_SETTINGS, GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { StorageKeys, UserRole, DeviceStatus, DryerStatus } from '@/utils/enums';
 import { Routes } from '@/types/navigation';
@@ -235,7 +235,6 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
         </AnimatedView>
-        <Navigation />
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );

@@ -17,8 +17,9 @@ import Animated, { FadeIn, FadeOut, createAnimatedComponent } from 'react-native
 import { ref, onValue, off } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import { useDevices } from '@/hooks';
-import { Header, Navigation, StatusBadge, DryingAlertBanner } from '@/components';
-import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
+import { useDryingSession } from '@/context/DryingSessionContext';
+import { Header, StatusBadge, DryingAlertBanner } from '@/components';
+import { GRADIENTS, IOS_TYPOGRAPHY, DRYING, COLORS } from '@/utils/constants';
 import { DeviceStatus } from '@/utils/enums';
 import { analyzeDryingStatus } from '@/utils/dryingAlerts';
 import { triggerDryingAlertNotification } from '@/utils/pushNotifications';
@@ -47,19 +48,25 @@ function SkeletonDeviceCards() {
   );
 }
 
+const STALE_MS = 30_000; // re-fetch only if data is older than 30s
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { devices: apiDevices, isLoading, error, refetch } = useDevices();
+  const { activeSession } = useDryingSession();
   const [devices, setDevices] = useState<Device[]>(apiDevices);
   const [refreshing, setRefreshing] = useState(false);
+  const lastFetchRef = React.useRef<number>(0);
 
   const dryingAlert = useMemo(() => {
     const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
     if (!onlineDevice) return null;
+    // latestMoisture/latestTemperature are injected at runtime by the Firebase listener below
+    const d = onlineDevice as Device & { latestMoisture?: number; latestTemperature?: number };
     return analyzeDryingStatus(
-      (onlineDevice as any)?.latestMoisture ?? 20,
+      d.latestMoisture ?? 20,
       DRYING.TARGET_MOISTURE,
-      (onlineDevice as any)?.latestTemperature ?? 45,
+      d.latestTemperature ?? 45,
     );
   }, [devices]);
 
@@ -69,17 +76,21 @@ export default function DashboardScreen() {
       const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
       triggerDryingAlertNotification(dryingAlert, onlineDevice?.deviceId);
     }
-  }, [dryingAlert, devices]);
+  }, [dryingAlert]); // eslint-disable-line react-hooks/exhaustive-deps -- devices is captured via dryingAlert which already depends on devices
 
   // Sync API devices into state
   useEffect(() => {
     setDevices(apiDevices);
   }, [apiDevices]);
 
-  // Refetch on screen focus
+  // Silently refetch on focus only if data is stale (>30s old)
   useFocusEffect(
     useCallback(() => {
-      refetch();
+      const now = Date.now();
+      if (now - lastFetchRef.current > STALE_MS) {
+        lastFetchRef.current = now;
+        refetch();
+      }
     }, [refetch])
   );
 
@@ -173,6 +184,31 @@ const AnimatedView = createAnimatedComponent(View);
               <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
             </TouchableOpacity>
 
+            {/* Active Drying Session Card */}
+            {activeSession && (
+              <TouchableOpacity
+                style={[styles.aiCard, { borderLeftWidth: 3, borderLeftColor: COLORS.primary }]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.Sessions); }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.aiCardLeft}>
+                  <View style={[styles.aiIconBg, { backgroundColor: '#DCFCE7' }]}>
+                    <Ionicons name="leaf" size={20} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.aiCardText}>
+                    <Text style={styles.aiCardTitle}>Drying: {activeSession.deviceId}</Text>
+                    <Text style={styles.aiCardSub}>
+                      {activeSession.currentMoisture?.toFixed(1)}% → {activeSession.targetMoisture}% | {activeSession.grainType}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'center' }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginBottom: 2 }} />
+                  <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                </View>
+              </TouchableOpacity>
+            )}
+
             {isLoading && devices.length === 0 ? (
               <SkeletonDeviceCards />
             ) : error ? (
@@ -232,7 +268,6 @@ const AnimatedView = createAnimatedComponent(View);
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </TouchableOpacity>
 
-        <Navigation />
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );

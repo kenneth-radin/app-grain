@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { BlurView as RawBlurView } from 'expo-blur';
 import { GLASS } from '@/utils/constants';
+
+const BlurView = RawBlurView as React.ComponentType<any>;
 
 interface GlassCardProps {
   children: React.ReactNode;

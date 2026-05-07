@@ -5,7 +5,7 @@
 
 import axios, { AxiosInstance } from 'axios'
 import * as SecureStore from 'expo-secure-store'
-import { StorageKeys, ApiTimeout, UserRole, DryerMode, AlertType, DeviceStatus, DryerStatus } from '@/utils/enums'
+import { StorageKeys, ApiTimeout, UserRole, DryerMode, AlertType, DeviceStatus } from '@/utils/enums'
 
 // ─── Data Models (matching backend) ───────────────────────────
 
@@ -95,6 +95,44 @@ export interface SensorInput {
   solarVoltage?: number
 }
 
+export interface DryingSession {
+  _id: string
+  deviceId: string
+  userId: string
+  status: 'active' | 'completed' | 'aborted'
+  grainType: string
+  startMoisture: number
+  targetMoisture: number
+  currentMoisture: number
+  finalMoisture?: number
+  startWeight: number
+  finalWeight?: number
+  totalEnergyUsed: number
+  avgTemperature: number
+  avgHumidity: number
+  avgFanSpeed: number
+  dataPoints: number
+  startedAt: string
+  completedAt?: string
+  duration?: number
+  efficiency?: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationItem {
+  _id: string
+  userId: string
+  deviceId?: string
+  type: 'drying_complete' | 'alert_critical' | 'alert_warning' | 'device_offline' | 'session_started' | 'session_aborted'
+  title: string
+  body: string
+  data?: Record<string, string>
+  isRead: boolean
+  sentViaFCM: boolean
+  createdAt: string
+}
+
 export interface PaginatedResponse<T> {
   data: T[]
   pagination: {
@@ -122,7 +160,6 @@ class GrainApiClient {
 
   constructor(baseURL?: string) {
     this.baseURL = baseURL || process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api'
-    console.log(`[grainApi] baseURL: ${this.baseURL}`)
 
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -188,11 +225,20 @@ class GrainApiClient {
       return err
     }
 
+    const status = error.response.status || 500
     const responseData = error.response.data
+
+    if (status === 500) {
+      const err = new Error('Server is experiencing issues. Please try again in a moment.')
+      ;(err as any).code = responseData?.errorCode || 'SERVER_ERROR'
+      ;(err as any).status = 500
+      return err
+    }
+
     const message = responseData?.error || error.message || 'Unknown error'
     const err = new Error(message)
     ;(err as any).code = responseData?.errorCode || 'UNKNOWN_ERROR'
-    ;(err as any).status = error.response.status || 500
+    ;(err as any).status = status
     return err
   }
 
@@ -488,11 +534,111 @@ class GrainApiClient {
     },
   }
 
-  // ─── Push Notifications ────────────────────────────────────
+  // ─── Drying Sessions ────────────────────────────────────────
+
+  sessions = {
+    list: async (params?: { status?: string; deviceId?: string; page?: number; limit?: number }): Promise<PaginatedResponse<DryingSession>> => {
+      const response = await this.client.get<ApiResponse<DryingSession[]> & { pagination: any }>(
+        '/sessions',
+        { params }
+      )
+      if (response.data.data) {
+        return {
+          data: response.data.data,
+          pagination: response.data.pagination || { total: response.data.data.length, page: 1, totalPages: 1 },
+        }
+      }
+      throw new Error('Invalid sessions response')
+    },
+
+    getById: async (id: string): Promise<DryingSession> => {
+      const response = await this.client.get<ApiResponse<DryingSession>>(`/sessions/${id}`)
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid session response')
+    },
+
+    start: async (payload: { deviceId: string; grainType?: string; targetMoisture?: number }): Promise<DryingSession> => {
+      const response = await this.client.post<ApiResponse<DryingSession>>('/sessions', payload)
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid start session response')
+    },
+
+    end: async (id: string, action: 'complete' | 'abort'): Promise<DryingSession> => {
+      const response = await this.client.patch<ApiResponse<DryingSession>>(`/sessions/${id}`, { action })
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid end session response')
+    },
+
+    getActive: async (deviceId?: string): Promise<DryingSession | null> => {
+      const params: any = { status: 'active' }
+      if (deviceId) params.deviceId = deviceId
+      const response = await this.client.get<ApiResponse<DryingSession[]> & { pagination: any }>(
+        '/sessions',
+        { params }
+      )
+      const sessions = response.data.data
+      if (sessions && sessions.length > 0) {
+        return sessions[0]
+      }
+      return null
+    },
+  }
+
+  // ─── Notifications ─────────────────────────────────────────
+
+  notifications = {
+    list: async (params?: { page?: number; limit?: number; unread?: boolean }): Promise<PaginatedResponse<NotificationItem>> => {
+      const queryParams: any = {}
+      if (params?.page) queryParams.page = params.page
+      if (params?.limit) queryParams.limit = params.limit
+      if (params?.unread) queryParams.unread = 'true'
+
+      const response = await this.client.get<ApiResponse<NotificationItem[]> & { pagination: any }>(
+        '/notifications',
+        { params: queryParams }
+      )
+      if (response.data.data) {
+        return {
+          data: response.data.data,
+          pagination: response.data.pagination || { total: response.data.data.length, page: 1, totalPages: 1 },
+        }
+      }
+      throw new Error('Invalid notifications response')
+    },
+
+    markRead: async (ids?: string[]): Promise<{ unreadCount: number }> => {
+      const body = ids ? { ids } : { markAll: true }
+      const response = await this.client.patch<ApiResponse<{ unreadCount: number }>>('/notifications', body)
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid mark read response')
+    },
+
+    registerFCMToken: async (token: string, platform: 'android' | 'ios' | 'web' = 'android'): Promise<void> => {
+      await this.client.post('/notifications/fcm-token', { token, platform })
+    },
+
+    removeFCMToken: async (token: string): Promise<void> => {
+      await this.client.delete('/notifications/fcm-token', { data: { token } })
+    },
+  }
+
+  // ─── Push Notifications (Legacy Expo Push) ─────────────────
 
   push = {
     registerToken: async (pushToken: string): Promise<void> => {
-      await this.client.post('/push/token', { pushToken })
+      // Register with both legacy and new endpoint
+      await Promise.allSettled([
+        this.client.post('/push/token', { pushToken }),
+        this.notifications.registerFCMToken(pushToken, 'android'),
+      ])
     },
   }
 
@@ -528,12 +674,12 @@ class GrainApiClient {
 export const grainApi = new GrainApiClient(process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api')
 
 /** Returns true if the error is a network/connectivity error (not a server response like 401).
- *  Also treats HTTP 502/503 as offline — Render returns these during cold starts. */
+ *  Also treats HTTP 500/502/503 as server-unavailable — Render returns these during cold starts or crashes. */
 export function isNetworkError(error: unknown): boolean {
   if (error instanceof Error) {
     const code = (error as any).code
     const status = (error as any).status
-    return !status || status === 0 || status === 502 || status === 503 || code === 'NETWORK_ERROR' || code === 'ECONNABORTED'
+    return !status || status === 0 || status === 500 || status === 502 || status === 503 || code === 'NETWORK_ERROR' || code === 'ECONNABORTED' || code === 'SERVER_ERROR'
   }
   return false
 }

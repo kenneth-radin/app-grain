@@ -7,6 +7,8 @@ import { useServerStatusContext } from '@/context/ServerStatusContext';
 import type { ServerStatus } from '@/context/ServerStatusContext';
 import { IOS_TYPOGRAPHY } from '@/utils/constants';
 
+const AnimatedView = Animated.View as React.ComponentType<any>;
+
 const PING_INTERVAL = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [2000, 4000, 8000];
@@ -79,7 +81,7 @@ export default function ServerStatusBanner(_props: ServerStatusBannerProps) {
   const config = STATUS_CONFIG[serverStatus];
 
   return (
-    <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
+    <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)}>
       <View style={[styles.banner, { backgroundColor: config.bgColor }]}>
         <Ionicons name={config.icon as any} size={18} color="#FFFFFF" />
         <Text style={styles.message}>{config.message}</Text>
@@ -89,7 +91,7 @@ export default function ServerStatusBanner(_props: ServerStatusBannerProps) {
           </TouchableOpacity>
         )}
       </View>
-    </Animated.View>
+    </AnimatedView>
   );
 }
 

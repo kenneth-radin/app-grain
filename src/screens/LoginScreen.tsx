@@ -21,7 +21,9 @@ import { useAuth } from '@/hooks';
 import { grainApi } from '@/api';
 import { useRouter } from 'expo-router';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
-import { DeviceStatus } from '@/utils/enums';
+
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
 
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -94,8 +96,12 @@ export default function LoginScreen() {
       router.replace('/(app)/dashboard');
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const status = err?.status;
       const msg = err?.message || 'Invalid credentials';
-      if (msg.toLowerCase().includes('email') || msg.toLowerCase().includes('user')) {
+      if (status === 500 || msg.toLowerCase().includes('server')) {
+        setEmailError('Server is temporarily unavailable. Please try again.');
+        setServerStatus('offline');
+      } else if (msg.toLowerCase().includes('email') || msg.toLowerCase().includes('user')) {
         setEmailError(msg);
       } else if (msg.toLowerCase().includes('password')) {
         setPasswordError(msg);
@@ -115,13 +121,13 @@ export default function LoginScreen() {
     }
   };
 
-  const serverStatusColor = serverStatus === DeviceStatus.Online ? '#22C55E' : serverStatus === DeviceStatus.Offline ? '#EF4444' : '#FBBF24';
-  const serverStatusText = serverStatus === 'checking' ? 'Checking...' : serverStatus === DeviceStatus.Online ? 'Online' : 'Offline';
+  const serverStatusColor = serverStatus === 'online' ? '#22C55E' : serverStatus === 'offline' ? '#EF4444' : '#FBBF24';
+  const serverStatusText = serverStatus === 'checking' ? 'Checking...' : serverStatus === 'online' ? 'Online' : 'Offline';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.login} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.login} style={styles.gradient}>
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -256,8 +262,8 @@ export default function LoginScreen() {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </LinearGradient>
-    </SafeAreaView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

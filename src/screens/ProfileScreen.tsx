@@ -25,7 +25,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/hooks';
 import { useToast } from '@/context/AppContext';
 import { grainApi } from '@/api';
-import { Header, Navigation } from '@/components';
+import { Header } from '@/components';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { Routes } from '@/types/navigation';
 
@@ -45,7 +45,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshProfile();
-    }, [])
+    }, [refreshProfile])
   );
 
   const [name, setName] = useState(user?.name || '');
@@ -98,45 +98,6 @@ export default function ProfileScreen() {
     }
   }, [name, phoneNumber, location, bio, updateProfile, showToast]);
 
-  const handlePickImage = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert('Update Photo', 'Choose an option', [
-      { text: 'Take Photo', onPress: handleCameraLaunch },
-      { text: 'Choose from Library', onPress: handleLibraryPick },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, []);
-
-  const handleCameraLaunch = useCallback(async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      showToast('Camera permission denied', 'error');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.5,
-    });
-    if (!result.canceled && result.assets[0]) {
-      await processAndUploadImage(result.assets[0].uri);
-    }
-  }, []);
-
-  const handleLibraryPick = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      showToast('Photo library permission denied', 'error');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.5,
-    });
-    if (!result.canceled && result.assets[0]) {
-      await processAndUploadImage(result.assets[0].uri);
-    }
-  }, []);
-
   const processAndUploadImage = useCallback(async (uri: string) => {
     setIsUploading(true);
     try {
@@ -163,6 +124,45 @@ export default function ProfileScreen() {
       setIsUploading(false);
     }
   }, [updateProfileImage, showToast]);
+
+  const handleCameraLaunch = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      showToast('Camera permission denied', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.5,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await processAndUploadImage(result.assets[0].uri);
+    }
+  }, [showToast, processAndUploadImage]);
+
+  const handleLibraryPick = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showToast('Photo library permission denied', 'error');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.5,
+    });
+    if (!result.canceled && result.assets[0]) {
+      await processAndUploadImage(result.assets[0].uri);
+    }
+  }, [showToast, processAndUploadImage]);
+
+  const handlePickImage = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert('Update Photo', 'Choose an option', [
+      { text: 'Take Photo', onPress: handleCameraLaunch },
+      { text: 'Choose from Library', onPress: handleLibraryPick },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [handleCameraLaunch, handleLibraryPick]);
 
   const handleChangePassword = useCallback(async () => {
     setPasswordError('');
@@ -470,7 +470,6 @@ export default function ProfileScreen() {
             </Modal>
           </ScrollView>
         </AnimatedView>
-        <Navigation />
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );

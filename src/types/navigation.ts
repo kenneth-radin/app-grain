@@ -21,6 +21,7 @@ export const Routes = {
   // App
   Dashboard: '/(app)/dashboard' as RelativePathString,
   Control: '/(app)/control' as RelativePathString,
+  Sessions: '/(app)/sessions' as RelativePathString,
   AIPrediction: '/(app)/ai-prediction' as RelativePathString,
   Analytics: '/(app)/analytics' as RelativePathString,
   Alerts: '/(app)/alerts' as RelativePathString,

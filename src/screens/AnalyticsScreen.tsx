@@ -15,12 +15,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { LineChart, BarChart } from 'react-native-chart-kit';
-import { Header, Navigation, ErrorBoundary } from '@/components';
+import { LineChart as RawLineChart, BarChart as RawBarChart } from 'react-native-chart-kit';
+import { Header, ErrorBoundary } from '@/components';
 import { grainApi } from '@/api';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import type { AnalyticsOverview } from '@/api';
+
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
+const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
+const AnimatedView = Animated.View as React.ComponentType<any>;
+const LineChart = RawLineChart as React.ComponentType<any>;
+const BarChart = RawBarChart as React.ComponentType<any>;
 
 type PeriodType = 'daily' | 'weekly' | 'monthly';
 
@@ -52,6 +58,7 @@ export default function AnalyticsScreen() {
   const { width: chartWidth } = useWindowDimensions();
   const screenWidth = chartWidth - 48;
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodType>('weekly');
   const [refreshing, setRefreshing] = useState(false);
@@ -59,10 +66,15 @@ export default function AnalyticsScreen() {
 
   const fetchData = useCallback(async () => {
     try {
+      setFetchError(null);
       const data = await grainApi.analytics.getOverview(period);
       setOverview(data);
-    } catch {
+    } catch (err: any) {
       setOverview(null);
+      const msg = err?.status === 500 || err?.status === 502 || err?.status === 503
+        ? 'Server unavailable — pull to retry'
+        : (err?.message || 'Failed to load analytics');
+      setFetchError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -111,11 +123,11 @@ export default function AnalyticsScreen() {
   const energyChartData = safeChartData(energyConsumption, fallbackData);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
-      <LinearGradient colors={GRADIENTS.analytics} style={styles.gradient}>
+      <LinearGradientCompat colors={GRADIENTS.analytics} style={styles.gradient}>
         <Header />
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView
             style={styles.scrollView}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
@@ -157,9 +169,9 @@ export default function AnalyticsScreen() {
               </View>
             ) : !overview ? (
               <View style={styles.loadingContainer}>
-                <Ionicons name="bar-chart-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.loadingText}>No analytics data available</Text>
-                <Text style={styles.loadingText}>Start a drying cycle to see trends</Text>
+                <Ionicons name={fetchError ? 'cloud-offline-outline' : 'bar-chart-outline'} size={48} color="#D1D5DB" />
+                <Text style={styles.loadingText}>{fetchError ?? 'No analytics data available'}</Text>
+                {!fetchError && <Text style={styles.loadingText}>Start a drying cycle to see trends</Text>}
               </View>
             ) : (
               <ErrorBoundary>
@@ -203,10 +215,9 @@ export default function AnalyticsScreen() {
               </ErrorBoundary>
             )}
           </ScrollView>
-        </Animated.View>
-        <Navigation />
-      </LinearGradient>
-    </SafeAreaView>
+        </AnimatedView>
+      </LinearGradientCompat>
+    </SafeAreaViewCompat>
   );
 }
 

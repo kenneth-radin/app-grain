@@ -5,6 +5,7 @@ import { DeviceProvider, useDeviceContext } from './DeviceContext';
 import { AlertProvider, useAlertContext } from './AlertContext';
 import { ToastProvider, useToastContext, type ToastState } from './ToastContext';
 import { ServerStatusProvider, useServerStatusContext } from './ServerStatusContext';
+import { DryingSessionProvider } from './DryingSessionContext';
 export type { ServerStatus } from './ServerStatusContext';
 
 // ─── Providers (compose at app root) ──────────────────────
@@ -15,7 +16,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       <AlertProvider>
         <ToastProvider>
           <ServerStatusProvider>
-            {children}
+            <DryingSessionProvider>
+              {children}
+            </DryingSessionProvider>
           </ServerStatusProvider>
         </ToastProvider>
       </AlertProvider>

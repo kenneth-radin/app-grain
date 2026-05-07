@@ -39,13 +39,11 @@ export function ServerStatusProvider({ children }: { children: React.ReactNode }
       }
     } catch (err: unknown) {
       setIsServerOnline(false);
-      if (isNetworkError(err)) {
-        const status = (err as any).status;
-        if (status === 502 || status === 503) {
-          setServerStatus('unreachable');
-        } else {
-          setServerStatus('offline');
-        }
+      const status = (err as any)?.status;
+      if (status === 500 || status === 502 || status === 503) {
+        setServerStatus('unreachable');
+      } else if (isNetworkError(err)) {
+        setServerStatus('offline');
       } else {
         setServerStatus('unreachable');
       }

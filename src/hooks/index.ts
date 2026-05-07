@@ -11,3 +11,5 @@ export { useFanControl } from './useFanControl';
 export type { UseFanControlReturn } from './useFanControl';
 export { useLogout } from './useLogout';
 export { usePushNotifications } from './usePushNotifications';
+export { useDryingSessions } from './useDryingSessions';
+export { useNotifications } from './useNotifications';

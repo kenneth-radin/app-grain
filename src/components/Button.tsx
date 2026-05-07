@@ -49,7 +49,7 @@ export default function Button({
         fullWidth && styles.fullWidth,
         disabled && styles.disabled,
         style,
-      ]}
+      ] as any}
     >
       {loading ? (
         <View style={styles.loadingContainer}>

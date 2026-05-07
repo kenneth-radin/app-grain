@@ -18,14 +18,13 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Header, Navigation, AlertCard } from '@/components';
+import { Header, AlertCard } from '@/components';
 import { grainApi } from '@/api';
 import type { AIPrediction } from '@/api';
 import { useDevices } from '@/hooks';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { AlertType } from '@/utils/enums';
-import { Routes } from '@/types/navigation';
 
 // Type-safe wrapper components
 const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
@@ -331,7 +330,6 @@ export default function AlertsScreen() {
           </View>
         </ScrollView>
         </AnimatedView>
-        <Navigation />
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );
