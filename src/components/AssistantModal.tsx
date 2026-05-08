@@ -17,7 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ref, get } from 'firebase/database';
+import { db } from '@/lib/firebase';
 import { useAssistant } from '@/context/AssistantContext';
+import { grainApi } from '@/api';
 import { COLORS } from '@/utils/constants';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -31,136 +34,74 @@ interface Message {
   timestamp: Date;
 }
 
-// ─── Knowledge Base ───────────────────────────────────────────────────────────
-
-const KB: Array<{ keywords: string[]; answer: { en: string; fil: string } }> = [
-  {
-    keywords: ['what is grain', 'ano ang grain', 'system', 'tungkol', 'about', 'platform'],
-    answer: {
-      en: 'grAIn is an AI-assisted IoT solar-powered rice grain dryer monitoring system. It lets farmers monitor drying conditions in real time, control the dryer remotely, and get AI-powered predictions — all from your phone.',
-      fil: 'Ang grAIn ay isang AI-assisted IoT solar-powered na sistema para sa pagmo-monitor ng grain dryer. Makita ang kondisyon sa real time, kontrolin ang dryer mula sa telepono, at makakuha ng AI predictions.',
-    },
-  },
-  {
-    keywords: ['target moisture', 'safe storage', 'ligtas', 'bakit 14', 'why 14', 'storage moisture'],
-    answer: {
-      en: 'The target moisture content for safe rice storage is 14% wet basis. Above 14%, grains are prone to mold and quality loss. The AI auto-stops the dryer when this level is reached.',
-      fil: 'Ang target moisture content para sa ligtas na imbakan ng bigas ay 14% wet basis. Kapag higit sa 14%, ang butil ay madaling magkaroon ng amag. Awtomatikong pinapatay ng AI ang dryer kapag naabot na ito.',
-    },
-  },
-  {
-    keywords: ['auto mode', 'auto', 'automatic', 'awtomatiko', 'ai control', 'ai mode', 'what does auto'],
-    answer: {
-      en: 'In Auto mode, the AI checks sensors every 60s and adjusts automatically:\n• MAINTAIN — conditions optimal\n• REDUCE_TEMP — temp >65°C, drops 5°C\n• INCREASE_TEMP — temp <38°C, raises 5°C\n• INCREASE_FAN — humidity high, +15% fan\n• STOP — target moisture reached',
-      fil: 'Sa Auto mode, tinitingnan ng AI ang mga sensor tuwing 60 segundo:\n• MAINTAIN — optimal ang kondisyon\n• REDUCE_TEMP — temp >65°C, bababa ng 5°C\n• INCREASE_TEMP — temp <38°C, tataas ng 5°C\n• INCREASE_FAN — mataas ang humidity, +15% fan\n• STOP — naabot ang target moisture',
-    },
-  },
-  {
-    keywords: ['manual mode', 'manual', 'mano-mano', 'manual control'],
-    answer: {
-      en: 'In Manual mode you control everything:\n• Temperature slider (35–70°C)\n• Fan speed slider (0–100%)\n• FAN1, FAN2, or ALL fans independently\n\nThe AI does NOT auto-adjust in Manual mode.',
-      fil: 'Sa Manual mode, ikaw ang may kontrol:\n• Temperature slider (35–70°C)\n• Fan speed slider (0–100%)\n• FAN1, FAN2, o ALL fans nang hiwalay\n\nHindi awtomatikong inaayos ng AI sa Manual mode.',
-    },
-  },
-  {
-    keywords: ['ai prediction', 'prediction', 'predict', 'hula', 'forecast', 'random forest'],
-    answer: {
-      en: 'AI Predictions use a trained Random Forest model (R² = 0.91) to forecast:\n• Moisture in 30 minutes\n• Time to reach 14% target\n• Efficiency score (0–100)\n• Confidence (65–97%)\n• 6-hour projected moisture curve',
-      fil: 'Ang AI Predictions ay gumagamit ng trained Random Forest model (R² = 0.91) para mahulaan ang:\n• Moisture pagkatapos ng 30 minuto\n• Oras para maabot ang 14% target\n• Efficiency score (0–100)\n• Confidence (65–97%)\n• 6-oras na projected curve',
-    },
-  },
-  {
-    keywords: ['sensor', 'sensors', 'temperature', 'humidity', 'moisture sensor', 'anong sensor', 'what sensors'],
-    answer: {
-      en: 'Sensors connected to ESP32:\n• DHT22 — temperature & humidity\n• Capacitive sensor — grain moisture %\n• Load cell + HX711 — grain weight (kg)\n• INA219 — energy (kWh)\n• Solar panel voltage\n\nData sent every 5–30 seconds.',
-      fil: 'Mga sensor na konektado sa ESP32:\n• DHT22 — temperatura at humidity\n• Capacitive sensor — moisture % ng butil\n• Load cell + HX711 — timbang (kg)\n• INA219 — enerhiya (kWh)\n• Solar panel voltage\n\nData tuwing 5–30 segundo.',
-    },
-  },
-  {
-    keywords: ['solar', 'solar power', 'energy', 'enerhiya', 'solar panel', 'kuryente'],
-    answer: {
-      en: 'The dryer runs on solar panels. Higher solar voltage = better efficiency. The AI factors solar voltage into its recommendations.',
-      fil: 'Ang dryer ay pinapagana ng solar panels. Mas mataas na solar voltage = mas magandang efficiency. Isinasaalang-alang ng AI ang solar voltage sa rekomendasyon.',
-    },
-  },
-  {
-    keywords: ['session', 'drying session', 'start session', 'start drying', 'paano magsimula', 'grain type'],
-    answer: {
-      en: 'Start a drying session:\n1. Sessions tab → "Start Session"\n2. Select device\n3. Choose grain type (rice/corn/wheat/soybean/coffee)\n4. Set target moisture (default 14%)\n5. Tap Start\n\nAuto-completes when moisture target is reached.',
-      fil: 'Magsimula ng drying session:\n1. Sessions tab → "Start Session"\n2. Piliin ang device\n3. Piliin ang uri ng butil (bigas/mais/trigo/soybean/kape)\n4. Itakda ang target moisture (default 14%)\n5. I-tap ang Start\n\nAwtomatikong natatapos kapag naabot ang target.',
-    },
-  },
-  {
-    keywords: ['alert', 'alerto', 'warning', 'babala', 'critical', 'notification'],
-    answer: {
-      en: '3 alert types:\n• Critical (red) — act immediately (temp >65°C)\n• Warning (yellow) — not ideal conditions\n• Info (blue) — general updates\n\nPush notifications for critical alerts and session completion.',
-      fil: '3 uri ng alerto:\n• Critical (pula) — kailangan ng agarang aksyon\n• Warning (dilaw) — hindi ideal\n• Info (asul) — pangkalahatang update\n\nPush notifications para sa critical at kapag tapos ang session.',
-    },
-  },
-  {
-    keywords: ['add device', 'magdagdag ng device', 'register device', 'device id', 'paano magdagdag'],
-    answer: {
-      en: 'Add a device:\n1. Dashboard → tap +\n2. Enter Device ID (e.g. GR-001)\n3. Enter location\n4. Tap Register\n\nShows Online when ESP32 sends data.',
-      fil: 'Magdagdag ng device:\n1. Dashboard → i-tap ang +\n2. Ilagay ang Device ID (hal. GR-001)\n3. Ilagay ang lokasyon\n4. I-tap ang Register\n\nNagpapakita ng Online kapag nagpapadala ng data ang ESP32.',
-    },
-  },
-  {
-    keywords: ['offline', 'no internet', 'walang internet', 'queue'],
-    answer: {
-      en: 'grAIn works offline! Commands queue locally and send when reconnected. AI still provides local rule-based predictions without internet.',
-      fil: 'Gumagana ang grAIn kahit offline! Ang mga utos ay naka-queue at ipinapadala kapag naibalik ang koneksyon. Ang AI ay nagbibigay pa rin ng lokal na predictions.',
-    },
-  },
-  {
-    keywords: ['analytics', 'history', 'kasaysayan', 'chart', 'report'],
-    answer: {
-      en: 'Analytics tab shows:\n• Moisture trend over time\n• Drying cycles history\n• Energy per session\n• Daily / weekly / monthly filters',
-      fil: 'Ang Analytics tab ay nagpapakita ng:\n• Trend ng moisture\n• Kasaysayan ng drying cycles\n• Enerhiya bawat session\n• Araw-araw / linggu-linggu / buwanang filter',
-    },
-  },
-  {
-    keywords: ['fan', 'fan control', 'fan1', 'fan2', 'airflow'],
-    answer: {
-      en: 'Two fans available:\n• FAN1 — primary drying fan\n• FAN2 — exhaust fan\n• ALL — both together\n\nManual: ON/OFF from Control screen. Auto: AI manages speed.',
-      fil: 'Dalawang fan:\n• FAN1 — pangunahing fan\n• FAN2 — exhaust fan\n• ALL — pareho nang sabay\n\nManual: ON/OFF sa Control screen. Auto: AI ang namamahala.',
-    },
-  },
-  {
-    keywords: ['efficiency', 'episyente', 'score'],
-    answer: {
-      en: 'Efficiency (0–100%) based on:\n• Temperature (ideal 40–60°C)\n• Fan speed (ideal 70–90%)\n• Humidity (lower = better)\n• Solar voltage (higher = better)\n\nScore >70% is good.',
-      fil: 'Efficiency (0–100%) batay sa:\n• Temperatura (ideal 40–60°C)\n• Fan speed (ideal 70–90%)\n• Humidity (mas mababa = mas maganda)\n• Solar voltage (mas mataas = mas maganda)\n\nScore >70% ay mabuti.',
-    },
-  },
-  {
-    keywords: ['help', 'tulong', 'what can you do', 'ano ang magagawa mo', 'topics'],
-    answer: {
-      en: 'I can help with:\n• System overview\n• Auto vs Manual mode\n• AI predictions\n• Sensors & hardware\n• Drying sessions\n• Alerts & notifications\n• Adding devices\n• Analytics\n• Fan & temperature control\n• Offline mode\n\nAsk in English or Filipino!',
-      fil: 'Maaari akong tumulong sa:\n• Pangkalahatang-ideya ng sistema\n• Auto vs Manual mode\n• AI predictions\n• Mga sensor at hardware\n• Drying sessions\n• Mga alerto\n• Pagdaragdag ng device\n• Analytics\n• Fan at temperatura\n• Offline mode\n\nMagtanong sa English o Filipino!',
-    },
-  },
-];
-
-const QUICK: Array<{ en: string; fil: string }> = [
-  { en: 'How does Auto mode work?', fil: 'Paano gumagana ang Auto mode?' },
-  { en: 'Why is 14% the target?', fil: 'Bakit 14% ang target?' },
-  { en: 'What sensors are used?', fil: 'Anong sensor ang ginagamit?' },
-  { en: 'How to start a session?', fil: 'Paano magsimula ng session?' },
-];
-
-function getResponse(input: string, lang: Language): string {
-  const q = input.toLowerCase().trim();
-  for (const item of KB) {
-    if (item.keywords.some(k => q.includes(k))) return item.answer[lang];
-  }
-  return lang === 'en'
-    ? 'Not sure about that. Try asking about Auto mode, sensors, sessions, or type "help" for all topics.'
-    : 'Hindi ko pa alam iyon. Subukan ang Auto mode, sensor, sessions, o mag-type ng "tulong".';
+interface ApiMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Quick prompts by language ────────────────────────────────────────────────
+
+const QUICK: { en: string; fil: string }[] = [
+  { en: 'What\'s the current status?', fil: 'Ano ang current status?' },
+  { en: 'How does Auto mode work?', fil: 'Paano gumagana ang Auto mode?' },
+  { en: 'Why is 14% the target?', fil: 'Bakit 14% ang target?' },
+  { en: 'Diagnose my current readings', fil: 'I-diagnose ang current readings ko' },
+];
+
+// ─── Fallback KB (used when API unreachable) 
+
+const FALLBACK: { keywords: string[]; en: string; fil: string }[] = [
+  {
+    keywords: ['auto', 'automatic', 'awtomatiko'],
+    en: 'Auto mode runs the AI control loop every 60s. It adjusts temperature and fan speed automatically using actions: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, or STOP when 14% moisture is reached.',
+    fil: 'Sa Auto mode, ang AI ay nag-a-adjust ng temperature at fan speed every 60 segundo: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, o STOP kapag naabot na ang 14%.',
+  },
+  {
+    keywords: ['14', 'target', 'moisture', 'safe storage', 'ligtas'],
+    en: '14% is the Philippine standard for safe rice storage. Above 14% risks mold and spoilage. Below 12% causes grain cracking.',
+    fil: 'Ang 14% ang Philippine standard para sa ligtas na imbakan. Kung mataas pa, may panganib na amag. Kung mababa sa 12%, mag-crack ang butil.',
+  },
+  {
+    keywords: ['sensor', 'temperature', 'humidity', 'moisture sensor'],
+    en: 'Sensors: DHT22 (temp + humidity), Capacitive sensor (grain moisture %), Load cell + HX711 (weight kg), INA219 (energy kWh), Solar voltage monitor. All connected to ESP32.',
+    fil: 'Mga sensor: DHT22 (temp + humidity), Capacitive sensor (grain moisture %), Load cell + HX711 (timbang kg), INA219 (enerhiya kWh), Solar voltage. Lahat nakakonekta sa ESP32.',
+  },
+  {
+    keywords: ['session', 'start', 'simula', 'how to'],
+    en: 'Start a session: Sessions tab → "Start Session" → select device → choose grain type → set target moisture (14%) → tap Start. Auto-completes when moisture target is reached.',
+    fil: 'Mag-start ng session: Sessions tab → "Start Session" → piliin ang device → uri ng butil → target moisture (14%) → i-tap ang Start. Awtomatikong natatapos kapag naabot ang target.',
+  },
+];
+
+function fallbackReply(input: string, lang: Language): string {
+  const q = input.toLowerCase();
+  for (const item of FALLBACK) {
+    if (item.keywords.some(k => q.includes(k))) {
+      return lang === 'en' ? item.en : item.fil;
+    }
+  }
+  return lang === 'en'
+    ? 'The AI service is temporarily unavailable. Try asking about: Auto mode, target moisture, sensors, or how to start a session.'
+    : 'Hindi maabot ang AI service ngayon. Subukan magtanong tungkol sa: Auto mode, target moisture, sensors, o paano mag-start ng session.';
+}
+
+// ─── Fetch live sensor data from Firebase ─────────────────────────────────────
+
+async function fetchLiveDeviceId(): Promise<string | null> {
+  try {
+    const devices = await grainApi.devices.list();
+    return devices?.[0]?.deviceId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const LANG_KEY = '@grain_chat_lang';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api';
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function AssistantModal() {
   const { isOpen, close } = useAssistant();
@@ -168,23 +109,28 @@ export function AssistantModal() {
   const [lang, setLang] = useState<Language>('en');
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
       role: 'bot',
-      text: 'Hello! I\'m the grAIn Assistant 👋\n\nAsk me anything about drying operations, AI predictions, or sensors — in English or Filipino!',
+      text: 'Hello! I\'m the grAIn Assistant 👋\n\nI know everything about your dryer system — hardware, AI, sensors, drying science. Ask me anything in English or Filipino!\n\n(Magtanong ka sa English o Filipino!)',
       timestamp: new Date(),
     },
   ]);
+  // Conversation history sent to Claude (role: user/assistant only)
+  const apiHistory = useRef<ApiMessage[]>([]);
   const listRef = useRef<FlatList<Message>>(null);
   const [kbHeight, setKbHeight] = useState(0);
 
-  // Persist language preference
+  // Restore language + fetch device ID when modal opens
   useEffect(() => {
-    AsyncStorage.getItem(LANG_KEY).then(v => { if (v === 'en' || v === 'fil') setLang(v); });
-  }, []);
+    if (!isOpen) return;
+    AsyncStorage.getItem(LANG_KEY).then(v => { if (v === 'en' || v === 'fil') setLang(v as Language); });
+    fetchLiveDeviceId().then(id => setDeviceId(id));
+  }, [isOpen]);
 
-  // Manual keyboard tracking — only reliable approach inside transparent Modal on iOS
+  // Keyboard tracking for transparent modal
   useEffect(() => {
     const show = Keyboard.addListener(
       Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
@@ -213,25 +159,63 @@ export function AssistantModal() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInput('');
 
-    const uMsg: Message = { id: `u${Date.now()}`, role: 'user', text: t, timestamp: new Date() };
-    setMessages(p => [...p, uMsg]);
+    const userMsg: Message = { id: `u${Date.now()}`, role: 'user', text: t, timestamp: new Date() };
+    setMessages(p => [...p, userMsg]);
     setIsTyping(true);
     scrollBottom();
 
-    await new Promise(r => setTimeout(r, 650));
+    // Add to API history
+    apiHistory.current.push({ role: 'user', content: t });
+    // Keep last 12 messages to stay within token limits
+    if (apiHistory.current.length > 12) {
+      apiHistory.current = apiHistory.current.slice(-12);
+    }
 
-    const bMsg: Message = { id: `b${Date.now()}`, role: 'bot', text: getResponse(t, lang), timestamp: new Date() };
-    setIsTyping(false);
-    setMessages(p => [...p, bMsg]);
+    try {
+      const token = await AsyncStorage.getItem('@grain_access_token');
+      const response = await fetch(`${API_BASE}/v1/assistant/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          messages: apiHistory.current,
+          language: lang === 'en' ? 'EN' : 'FIL',
+          deviceId,
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      const reply: string = data.data?.reply ?? data.reply ?? fallbackReply(t, lang);
+
+      // Add assistant reply to history
+      apiHistory.current.push({ role: 'assistant', content: reply });
+
+      const botMsg: Message = { id: `b${Date.now()}`, role: 'bot', text: reply, timestamp: new Date() };
+      setIsTyping(false);
+      setMessages(p => [...p, botMsg]);
+    } catch {
+      // Fallback to local KB if API unreachable
+      const reply = fallbackReply(t, lang);
+      apiHistory.current.push({ role: 'assistant', content: reply });
+      const botMsg: Message = { id: `b${Date.now()}`, role: 'bot', text: reply, timestamp: new Date() };
+      setIsTyping(false);
+      setMessages(p => [...p, botMsg]);
+    }
+
     scrollBottom();
-  }, [lang, scrollBottom]);
+  }, [lang, deviceId, scrollBottom]);
+
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const allData: Message[] = [
     ...messages,
     ...(isTyping ? [{ id: '__t__', role: 'typing' as const, text: '', timestamp: new Date() }] : []),
   ];
-
-  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
     <Modal
@@ -241,12 +225,9 @@ export function AssistantModal() {
       statusBarTranslucent
       onRequestClose={close}
     >
-      {/* Backdrop */}
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={close} />
 
-      {/* Sheet */}
-      <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
-        {/* Handle */}
+      <View style={[styles.sheet, { paddingBottom: kbHeight > 0 ? 0 : insets.bottom }]}>
         <View style={styles.handle} />
 
         {/* Header */}
@@ -257,7 +238,9 @@ export function AssistantModal() {
             </View>
             <View>
               <Text style={styles.headerTitle}>grAIn Assistant</Text>
-              <Text style={styles.headerSub}>AI-powered help</Text>
+              <Text style={styles.headerSub}>
+                {deviceId ? `📡 ${deviceId}` : 'AI-powered help'}
+              </Text>
             </View>
           </View>
           <View style={styles.headerRight}>
@@ -281,8 +264,8 @@ export function AssistantModal() {
           </View>
         </View>
 
-        {/* Messages + input — padded by manual keyboard height tracking */}
-        <View style={[styles.kav, { paddingBottom: kbHeight }]}>
+        {/* Messages + input pushed by keyboard */}
+        <View style={[styles.body, { paddingBottom: kbHeight }]}>
           <FlatList
             ref={listRef}
             data={allData}
@@ -331,15 +314,15 @@ export function AssistantModal() {
             ))}
           </ScrollView>
 
-          {/* Input bar — always above keyboard */}
+          {/* Input bar */}
           <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
             <TextInput
               style={styles.input}
               value={input}
               onChangeText={setInput}
-              placeholder={lang === 'en' ? 'Ask anything...' : 'Magtanong...'}
+              placeholder={lang === 'en' ? 'Ask anything about your dryer...' : 'Magtanong tungkol sa dryer...'}
               placeholderTextColor="#9CA3AF"
-              maxLength={300}
+              maxLength={500}
               returnKeyType="send"
               blurOnSubmit={false}
               enablesReturnKeyAutomatically
@@ -364,7 +347,7 @@ const styles = StyleSheet.create({
   backdrop: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
     position: 'absolute',
@@ -412,7 +395,7 @@ const styles = StyleSheet.create({
   langText: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
   langTextActive: { color: COLORS.primary },
   closeBtn: { padding: 4, borderRadius: 8, backgroundColor: '#F3F4F6' },
-  kav: { flex: 1 },
+  body: { flex: 1 },
   list: { flex: 1 },
   listContent: { padding: 14, gap: 10 },
   row: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
@@ -424,7 +407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 2, flexShrink: 0,
   },
-  bubble: { maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  bubble: { maxWidth: '80%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   bubbleUser: { backgroundColor: COLORS.primary, borderBottomRightRadius: 4 },
   bubbleBot: {
     backgroundColor: '#fff', borderBottomLeftRadius: 4,
@@ -437,7 +420,7 @@ const styles = StyleSheet.create({
   timeUser: { color: 'rgba(255,255,255,0.65)' },
   timeBot: { color: '#9CA3AF' },
   typingText: { fontSize: 13, color: '#6B7280', fontStyle: 'italic' },
-  chips: { flexGrow: 0, backgroundColor: 'transparent' },
+  chips: { flexGrow: 0 },
   chipsContent: { paddingHorizontal: 12, paddingVertical: 7, gap: 8 },
   chip: {
     backgroundColor: '#fff',
