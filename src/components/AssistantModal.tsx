@@ -17,8 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ref, get } from 'firebase/database';
-import { db } from '@/lib/firebase';
+import * as SecureStore from 'expo-secure-store';
 import { useAssistant } from '@/context/AssistantContext';
 import { grainApi } from '@/api';
 import { COLORS } from '@/utils/constants';
@@ -172,7 +171,7 @@ export function AssistantModal() {
     }
 
     try {
-      const token = await AsyncStorage.getItem('@grain_access_token');
+      const token = await SecureStore.getItemAsync('grain_token');
       const response = await fetch(`${API_BASE}/v1/assistant/chat`, {
         method: 'POST',
         headers: {
