@@ -9,7 +9,8 @@ import { useRealtimeSensor } from './useRealtimeSensor';
 import { useToastContext } from '@/context/ToastContext';
 import { useDryingSession } from '@/context/DryingSessionContext';
 import { runPrediction } from './useAIPrediction';
-import type { SensorInput, AIPrediction } from './useAIPrediction';
+import type { SensorInput } from './useAIPrediction';
+import type { AIPrediction } from './useAIPrediction';
 import { DRYING } from '@/utils/constants';
 import { DryerMode, StorageKeys } from '@/utils/enums';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -149,6 +150,39 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   // Derive isRunning from shared context — true when context has an active session for this device
   const isRunning = sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId;
 
+  // Apply AI action: adjust temperature/fan based on ML recommendation
+  const applyAIAction = useCallback(async (prediction: AIPrediction, currentTemp: number, currentFan: number) => {
+    if (!deviceId) return;
+    const action = prediction.action;
+    if (action === 'MAINTAIN' || action === 'STOP') return;
+
+    let newTemp = currentTemp;
+    let newFan = currentFan;
+
+    if (action === 'REDUCE_TEMP') {
+      newTemp = Math.max(35, currentTemp - 5);
+    } else if (action === 'INCREASE_TEMP') {
+      newTemp = Math.min(65, currentTemp + 5);
+    } else if (action === 'INCREASE_FAN') {
+      newFan = Math.min(100, currentFan + 15);
+    }
+
+    if (newTemp === currentTemp && newFan === currentFan) return;
+
+    setTemperature(newTemp);
+    setFanSpeed(newFan);
+
+    try {
+      if (db) {
+        set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
+          command: 'FAN_CONTROL', mode: DryerMode.Auto,
+          temperature: newTemp, fanSpeed: newFan, timestamp: Date.now(),
+        }).catch(() => {});
+      }
+      await grainApi.dryer.start(deviceId, DryerMode.Auto, newTemp, newFan);
+    } catch { /* silent — next poll will retry */ }
+  }, [deviceId]);
+
   // AI prediction polling in AUTO mode when running
   useEffect(() => {
     if (mode !== DryerMode.Auto || !isRunning || !deviceId) return;
@@ -167,26 +201,32 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         };
         try {
           const result = await grainApi.ai.predict(input);
-          setAiPrediction({
+          const prediction: AIPrediction = {
             predictedMoisture30min: result.predictedMoisture30min,
             estimatedMinutesToTarget: result.estimatedMinutesToTarget,
             recommendation: result.recommendation,
             recommendationType: result.recommendationType,
+            action: (result.action ?? 'MAINTAIN') as AIPrediction['action'],
             efficiencyScore: result.efficiencyScore,
             confidence: result.confidence,
             isDryingComplete: result.isDryingComplete,
             projectedMoistureCurve: result.projectedCurve,
             targetMoisture: result.targetMoisture,
             algorithm: result.algorithm,
-          });
+          };
+          setAiPrediction(prediction);
           if (result.isDryingComplete && !aiAutoStopped) {
             await autoStopDryer();
+          } else {
+            await applyAIAction(prediction, input.temperature, input.fanSpeed);
           }
         } catch {
           const result = runPrediction(input);
           setAiPrediction(result);
           if (result.isDryingComplete && !aiAutoStopped) {
             await autoStopDryer();
+          } else {
+            await applyAIAction(result, input.temperature, input.fanSpeed);
           }
         }
       } catch {

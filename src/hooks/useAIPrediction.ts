@@ -18,6 +18,7 @@ export interface AIPrediction {
   estimatedMinutesToTarget: number;
   recommendation: string;
   recommendationType: 'optimal' | 'warning' | 'critical';
+  action: 'STOP' | 'REDUCE_TEMP' | 'INCREASE_TEMP' | 'INCREASE_FAN' | 'MAINTAIN';
   efficiencyScore: number;   // 0–100
   confidence: number;        // 0–100
   isDryingComplete: boolean;
@@ -66,41 +67,24 @@ function estimateTimeToTarget(
 function generateRecommendation(input: SensorInput): {
   text: string;
   type: 'optimal' | 'warning' | 'critical';
+  action: AIPrediction['action'];
 } {
   if (input.moisture <= TARGET_MOISTURE) {
-    return {
-      text: 'Target moisture reached — drying complete! Stop dryer to prevent over-drying',
-      type: 'optimal',
-    };
+    return { text: 'Target moisture reached — drying complete! Stop dryer to prevent over-drying', type: 'optimal', action: 'STOP' };
   }
   if (input.temperature > 65) {
-    return {
-      text: 'Temperature too high — reduce heating by 5°C to prevent grain cracking',
-      type: 'critical',
-    };
+    return { text: 'Temperature too high — reduce heating by 5°C to prevent grain cracking', type: 'critical', action: 'REDUCE_TEMP' };
   }
   if (input.temperature < 35) {
-    return {
-      text: 'Temperature too low — increase heating for faster drying',
-      type: 'warning',
-    };
+    return { text: 'Temperature too low — increase heating for faster drying', type: 'warning', action: 'INCREASE_TEMP' };
   }
   if (input.fanSpeed < 50) {
-    return {
-      text: `Increase fan speed to ${Math.min(input.fanSpeed + 20, 85)}% for better airflow`,
-      type: 'warning',
-    };
+    return { text: `Increase fan speed to ${Math.min(input.fanSpeed + 20, 85)}% for better airflow`, type: 'warning', action: 'INCREASE_FAN' };
   }
   if (input.humidity > 70) {
-    return {
-      text: 'High ambient humidity detected — increase exhaust fan speed',
-      type: 'warning',
-    };
+    return { text: 'High ambient humidity detected — increase exhaust fan speed', type: 'warning', action: 'INCREASE_FAN' };
   }
-  return {
-    text: 'Optimal drying conditions — maintain current settings',
-    type: 'optimal',
-  };
+  return { text: 'Optimal drying conditions — maintain current settings', type: 'optimal', action: 'MAINTAIN' };
 }
 
 function calculateEfficiency(input: SensorInput): number {
@@ -153,6 +137,7 @@ export function runPrediction(input: SensorInput): AIPrediction {
     estimatedMinutesToTarget,
     recommendation: recommendation.text,
     recommendationType: recommendation.type,
+    action: recommendation.action,
     efficiencyScore,
     confidence,
     isDryingComplete,
@@ -219,6 +204,7 @@ export function useAIPrediction(
           estimatedMinutesToTarget: result.estimatedMinutesToTarget,
           recommendation: result.recommendation,
           recommendationType: result.recommendationType,
+          action: (result.action ?? 'MAINTAIN') as AIPrediction['action'],
           efficiencyScore: result.efficiencyScore,
           confidence: result.confidence,
           isDryingComplete: result.isDryingComplete,

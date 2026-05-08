@@ -77,6 +77,7 @@ export interface AIPrediction {
   estimatedMinutesToTarget: number
   recommendation: string
   recommendationType: 'optimal' | 'warning' | 'critical'
+  action: 'STOP' | 'REDUCE_TEMP' | 'INCREASE_TEMP' | 'INCREASE_FAN' | 'MAINTAIN'
   efficiencyScore: number
   confidence: number
   isDryingComplete: boolean
