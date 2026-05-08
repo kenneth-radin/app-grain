@@ -174,7 +174,7 @@ const AnimatedView = createAnimatedComponent(View);
             >
               <View style={styles.aiCardLeft}>
                 <View style={styles.aiIconBg}>
-                  <Ionicons name="sparkles" size={22} color="#22C55E" />
+                  <Ionicons name="sparkles" size={20} color="#22C55E" />
                 </View>
                 <View style={styles.aiCardText}>
                   <Text style={styles.aiCardTitle}>AI Insights</Text>
@@ -259,15 +259,6 @@ const AnimatedView = createAnimatedComponent(View);
           </ScrollView>
         </AnimatedView>
 
-        {/* FAB - Floating Action Button */}
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleAddDevice}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={28} color="#FFFFFF" />
-        </TouchableOpacity>
-
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );
@@ -286,6 +277,18 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingBottom: 72,
+  },
+  quickCardRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 4,
+  },
+  halfCard: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingVertical: 14,
   },
   titleRow: {
     flexDirection: 'row',
@@ -353,22 +356,6 @@ const styles = StyleSheet.create({
     ...IOS_TYPOGRAPHY.caption2,
     color: '#9CA3AF',
     marginTop: 2,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#22C55E',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#22C55E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   errorContainer: {
     alignItems: 'center',
