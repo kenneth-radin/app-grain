@@ -1,4 +1,6 @@
 export { default as AlertCard } from './AlertCard';
+export { AssistantFAB } from './AssistantFAB';
+export { AssistantModal } from './AssistantModal';
 export { default as ServerStatusBanner } from './ServerStatusBanner';
 export { default as Button } from './Button';
 export { default as Card } from './Card';

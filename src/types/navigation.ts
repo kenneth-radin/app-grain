@@ -28,6 +28,7 @@ export const Routes = {
   Settings: '/(app)/settings' as RelativePathString,
   Profile: '/(app)/profile' as RelativePathString,
   AddDevice: '/(app)/add-device' as RelativePathString,
+  AIChatbot: '/(app)/ai-chatbot' as RelativePathString,
 
   // Dynamic routes — use router.push with params object
   DeviceDetail: '/(app)/device/[id]' as const,

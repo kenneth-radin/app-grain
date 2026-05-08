@@ -103,7 +103,7 @@ export default function AIPredictionScreen() {
     <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradientCompat colors={GRADIENTS.analytics} style={styles.gradient}>
-        <Header />
+        <Header showBack />
         <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
           <ScrollView
             style={styles.scrollView}
