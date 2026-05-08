@@ -32,17 +32,18 @@ const chartConfig = {
   backgroundGradientFrom: '#FFFFFF',
   backgroundGradientTo: '#FFFFFF',
   fillShadowGradient: '#22C55E',
-  fillShadowGradientOpacity: 0.15,
+  fillShadowGradientOpacity: 0.12,
   decimalPlaces: 1,
   color: (opacity: number = 1) => `rgba(34, 197, 94, ${opacity})`,
   labelColor: (opacity: number = 1) => `rgba(107, 114, 128, ${opacity})`,
-  style: { borderRadius: 16 },
-  propsForDots: { r: '4', strokeWidth: '2', stroke: '#22C55E' },
+  style: { borderRadius: 12 },
+  propsForDots: { r: '3.5', strokeWidth: '2', stroke: '#22C55E' },
+  propsForBackgroundLines: { stroke: '#F3F4F6', strokeWidth: 1 },
 };
 
 export default function AIPredictionScreen() {
   const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - 48;
+  const chartWidth = screenWidth - 56;
   const [refreshing, setRefreshing] = useState(false);
   const { showToast } = useToast();
   const { prediction, isLoading, isOfflineFallback, refetch } = useAIPrediction(undefined, {
@@ -82,19 +83,19 @@ export default function AIPredictionScreen() {
 
   const recStyle = prediction ? getRecommendationStyle(prediction.recommendationType) : getRecommendationStyle('optimal');
 
-  // Build chart data from projected curve (show every other label to avoid crowding)
   const curveChartData = prediction?.projectedMoistureCurve
     ? {
-        labels: prediction.projectedMoistureCurve.map((p, i) => i % 2 === 0 ? `${p.time}` : ''),
+        labels: prediction.projectedMoistureCurve.map((p, i) => i % 3 === 0 ? `${p.time}` : ''),
         datasets: [
           {
             data: prediction.projectedMoistureCurve.map((p) => Math.max(0.1, p.moisture)),
-            color: (opacity: number = 1) => `rgba(249, 115, 22, ${opacity})`,
+            color: (opacity: number = 1) => `rgba(34, 197, 94, ${opacity})`,
+            strokeWidth: 2.5,
           },
         ],
       }
     : {
-        labels: ['0', '', '60', '', '120', '', '180'],
+        labels: ['0', '', '', '90', '', '', '180'],
         datasets: [{ data: [20, 18, 16.5, 15.2, 14.1, 13.2, 12.5] }],
       };
 
@@ -109,17 +110,20 @@ export default function AIPredictionScreen() {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
             contentContainerStyle={styles.scrollContent}
           >
-            <View style={styles.titleRow}>
-              <Ionicons name="sparkles" size={24} color="#22C55E" />
-              <Text style={styles.screenTitle}>AI Predictions</Text>
-              {isOfflineFallback && (
-                <View style={styles.offlineBadge}>
-                  <Ionicons name="cloud-offline-outline" size={12} color="#F97316" />
-                  <Text style={styles.offlineBadgeText}>Offline</Text>
-                </View>
-              )}
+            {/* Title */}
+            <View style={styles.titleSection}>
+              <View style={styles.titleRow}>
+                <Ionicons name="sparkles" size={22} color="#22C55E" />
+                <Text style={styles.screenTitle}>AI Predictions</Text>
+                {isOfflineFallback && (
+                  <View style={styles.offlineBadge}>
+                    <Ionicons name="cloud-offline-outline" size={11} color="#F97316" />
+                    <Text style={styles.offlineBadgeText}>Offline</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.screenSubtitle}>AI-Assisted drying optimization</Text>
             </View>
-            <Text style={styles.screenSubtitle}>AI-Assisted drying optimization</Text>
 
             {isLoading ? (
               <View style={styles.loadingContainer}>
@@ -127,40 +131,41 @@ export default function AIPredictionScreen() {
                 <Text style={styles.loadingText}>Analyzing drying data...</Text>
               </View>
             ) : prediction ? (
-              <View>
-              <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); refetch(); }} activeOpacity={0.7}>
-                <Ionicons name="refresh-outline" size={16} color="#22C55E" />
-                <Text style={styles.runButtonText}>Run Prediction</Text>
-              </TouchableOpacity>
+              <View style={styles.cardsContainer}>
+                {/* Run Button */}
+                <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); refetch(); }} activeOpacity={0.7}>
+                  <Ionicons name="refresh-outline" size={15} color="#22C55E" />
+                  <Text style={styles.runButtonText}>Run Prediction</Text>
+                </TouchableOpacity>
+
                 {/* Card 1: Predicted Moisture */}
                 <View style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name="water-outline" size={20} color="#22C55E" />
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="water-outline" size={16} color="#22C55E" />
+                    </View>
                     <Text style={styles.cardTitle}>Predicted Moisture (30 min)</Text>
                   </View>
                   <Text style={[styles.bigValue, { color: getMoistureColor(prediction.predictedMoisture30min) }]}>
                     {prediction.predictedMoisture30min}%
                   </Text>
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${Math.min(100, (1 - prediction.predictedMoisture30min / 30) * 100)}%`, backgroundColor: getMoistureColor(prediction.predictedMoisture30min) }]} />
-                    </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${Math.min(100, (1 - prediction.predictedMoisture30min / 30) * 100)}%`, backgroundColor: getMoistureColor(prediction.predictedMoisture30min) }]} />
                   </View>
-                  <View style={styles.progressLabels}>
-                    <Text style={styles.progressLabel}>Current → Predicted → 14% Target</Text>
-                  </View>
-                  <Text style={styles.cardSubtext}>Based on current drying trend</Text>
+                  <Text style={styles.progressLabel}>Current → Predicted → 14% Target</Text>
                 </View>
 
                 {/* Card 2: Estimated Time */}
                 <View style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name="time-outline" size={20} color="#22C55E" />
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="time-outline" size={16} color="#22C55E" />
+                    </View>
                     <Text style={styles.cardTitle}>Est. Time to Target</Text>
                   </View>
                   {prediction.isDryingComplete ? (
                     <View style={styles.completeRow}>
-                      <Ionicons name="checkmark-circle" size={28} color="#22C55E" />
+                      <Ionicons name="checkmark-circle" size={26} color="#22C55E" />
                       <Text style={styles.completeText}>Drying Complete</Text>
                     </View>
                   ) : (
@@ -170,24 +175,26 @@ export default function AIPredictionScreen() {
                 </View>
 
                 {/* Card 3: AI Recommendation */}
-                <View style={[styles.card, { backgroundColor: recStyle.bg, borderColor: recStyle.border, borderWidth: 1.5 }]}>
+                <View style={[styles.card, styles.recommendationCard, { backgroundColor: recStyle.bg, borderColor: recStyle.border }]}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name={recStyle.icon} size={20} color={recStyle.text} />
+                    <Ionicons name={recStyle.icon} size={18} color={recStyle.text} />
                     <Text style={[styles.cardTitle, { color: recStyle.text }]}>AI Recommendation</Text>
                   </View>
                   <Text style={[styles.recommendationText, { color: recStyle.text }]}>
                     {prediction.recommendation}
                   </Text>
                   <View style={styles.aiLabel}>
-                    <Ionicons name="sparkles-outline" size={12} color={recStyle.text} />
+                    <Ionicons name="sparkles-outline" size={11} color={recStyle.text} />
                     <Text style={[styles.aiLabelText, { color: recStyle.text }]}>AI-Assisted</Text>
                   </View>
                 </View>
 
-                {/* Card 4: 2x2 Mini Stats Grid */}
+                {/* Card 4: Metrics Grid */}
                 <View style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name="stats-chart-outline" size={20} color="#22C55E" />
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="stats-chart-outline" size={16} color="#22C55E" />
+                    </View>
                     <Text style={styles.cardTitle}>AI Metrics</Text>
                   </View>
                   <View style={styles.statsGrid}>
@@ -205,7 +212,7 @@ export default function AIPredictionScreen() {
                     </View>
                     <View style={styles.statCell}>
                       <Text style={styles.statLabel}>Status</Text>
-                      <Text style={[styles.statValue, { color: prediction.isDryingComplete ? '#22C55E' : '#F97316' }]}>{prediction.isDryingComplete ? 'Complete' : 'Drying'}</Text>
+                      <Text style={[styles.statValue, { color: prediction.isDryingComplete ? '#22C55E' : '#F97316', fontSize: 16 }]}>{prediction.isDryingComplete ? 'Done' : 'Drying'}</Text>
                     </View>
                   </View>
                 </View>
@@ -213,42 +220,45 @@ export default function AIPredictionScreen() {
                 {/* Card 5: Moisture Trend Chart */}
                 <View style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name="trending-down-outline" size={20} color="#22C55E" />
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="trending-down-outline" size={16} color="#22C55E" />
+                    </View>
                     <Text style={styles.cardTitle}>Projected Moisture Curve</Text>
                   </View>
-                  <LineChart
-                    data={curveChartData}
-                    width={chartWidth}
-                    height={200}
-                    chartConfig={{
-                      ...chartConfig,
-                      color: (opacity: number = 1) => `rgba(249, 115, 22, ${opacity})`,
-                    }}
-                    bezier
-                    style={styles.chart}
-                  />
+                  <View style={styles.chartContainer}>
+                    <LineChart
+                      data={curveChartData}
+                      width={chartWidth}
+                      height={180}
+                      chartConfig={{
+                        ...chartConfig,
+                        color: (opacity: number = 1) => `rgba(34, 197, 94, ${opacity})`,
+                      }}
+                      bezier
+                      style={styles.chart}
+                      withInnerLines={false}
+                      withOuterLines={true}
+                      withVerticalLabels={true}
+                      withHorizontalLabels={true}
+                      fromZero={false}
+                    />
+                  </View>
                   <View style={styles.targetLine}>
                     <View style={styles.targetDash} />
                     <Text style={styles.targetLabel}>14% Safe Storage Level</Text>
-                  </View>
-                  <View style={styles.aiLabel}>
-                    <Ionicons name="sparkles-outline" size={12} color="#6B7280" />
-                    <Text style={styles.aiLabelText}>AI-Assisted Projection</Text>
                   </View>
                 </View>
 
                 {/* Card 6: Algorithm Info */}
                 <View style={styles.algorithmCard}>
-                  <View style={styles.algorithmRow}>
-                    <Ionicons name="information-circle-outline" size={16} color="#9CA3AF" />
-                    <View style={styles.algorithmInfo}>
-                      <Text style={styles.algorithmText}>AI Model: {prediction.algorithm || 'Rule-based Drying Model v1'}</Text>
-                      <Text style={styles.algorithmSubtext}>
-                        {prediction.algorithm?.includes('RandomForest')
-                          ? 'Trained on rice drying data (R² = 0.91)'
-                          : 'Fallback model active — ML service warming up'}
-                      </Text>
-                    </View>
+                  <Ionicons name="information-circle-outline" size={14} color="#9CA3AF" />
+                  <View style={styles.algorithmInfo}>
+                    <Text style={styles.algorithmText}>{prediction.algorithm || 'Rule-based Drying Model v1'}</Text>
+                    <Text style={styles.algorithmSubtext}>
+                      {prediction.algorithm?.includes('RandomForest')
+                        ? 'Trained on rice drying data (R² = 0.91)'
+                        : 'Fallback model — ML service warming up'}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -257,7 +267,7 @@ export default function AIPredictionScreen() {
                 <Ionicons name="sparkles-outline" size={48} color="#6B7280" />
                 <Text style={styles.loadingText}>No prediction data available</Text>
                 <TouchableOpacity style={styles.runButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); refetch(); }} activeOpacity={0.7}>
-                  <Ionicons name="refresh-outline" size={16} color="#22C55E" />
+                  <Ionicons name="refresh-outline" size={15} color="#22C55E" />
                   <Text style={styles.runButtonText}>Run Prediction</Text>
                 </TouchableOpacity>
               </View>
@@ -273,53 +283,92 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   gradient: { flex: 1 },
   scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 72, gap: 16 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 80, paddingTop: 4 },
+  titleSection: { marginBottom: 16 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  screenTitle: { ...IOS_TYPOGRAPHY.largeTitle, color: '#111111' },
-  screenSubtitle: { ...IOS_TYPOGRAPHY.footnote, color: '#6B7280', marginBottom: 4 },
+  screenTitle: { ...IOS_TYPOGRAPHY.largeTitle, color: '#111111', fontSize: 26 },
+  screenSubtitle: { ...IOS_TYPOGRAPHY.footnote, color: '#6B7280', marginTop: 2 },
+  cardsContainer: { gap: 14 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    gap: 8,
+    padding: 18,
+    gap: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  recommendationCard: {
+    borderWidth: 1.5,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { ...IOS_TYPOGRAPHY.headline, color: '#111111' },
-  cardSubtext: { ...IOS_TYPOGRAPHY.caption1, color: '#6B7280' },
-  bigValue: { fontSize: 36, fontWeight: '700' },
-  progressRow: { marginVertical: 4 },
-  progressTrack: { height: 10, backgroundColor: '#E5E7EB', borderRadius: 5, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 5 },
-  progressLabels: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressLabel: { ...IOS_TYPOGRAPHY.caption2, color: '#9CA3AF' },
-  countdownValue: { fontSize: 36, fontWeight: '700', color: '#111111' },
-  completeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  completeText: { fontSize: 24, fontWeight: '700', color: '#22C55E' },
-  recommendationText: { fontSize: 15, fontWeight: '500', lineHeight: 22 },
-  aiLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  aiLabelText: { ...IOS_TYPOGRAPHY.caption2, color: '#6B7280', fontWeight: '600' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statCell: { flex: 1, minWidth: '45%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, alignItems: 'center', gap: 4 },
-  statLabel: { ...IOS_TYPOGRAPHY.caption2, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
-  statValue: { fontSize: 22, fontWeight: '700', color: '#111111' },
-  chart: { borderRadius: 16 },
-  targetLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  targetDash: { flex: 1, height: 1, backgroundColor: '#EF4444', borderStyle: 'dashed' },
-  targetLabel: { ...IOS_TYPOGRAPHY.caption2, color: '#EF4444', fontWeight: '600' },
-  algorithmCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, gap: 4 },
-  algorithmRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  algorithmInfo: { flex: 1, gap: 2 },
-  algorithmText: { ...IOS_TYPOGRAPHY.caption1, color: '#6B7280' },
-  algorithmSubtext: { ...IOS_TYPOGRAPHY.caption2, color: '#9CA3AF' },
-  loadingContainer: { paddingVertical: 48, alignItems: 'center', gap: 12 },
+  iconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F0FDF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: { ...IOS_TYPOGRAPHY.headline, color: '#111111', fontSize: 15, fontWeight: '600' },
+  cardSubtext: { ...IOS_TYPOGRAPHY.caption1, color: '#9CA3AF', fontSize: 12 },
+  bigValue: { fontSize: 34, fontWeight: '700', marginTop: 2 },
+  progressTrack: { height: 8, backgroundColor: '#F3F4F6', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 4 },
+  progressLabel: { ...IOS_TYPOGRAPHY.caption2, color: '#9CA3AF', fontSize: 11 },
+  countdownValue: { fontSize: 34, fontWeight: '700', color: '#111111', marginTop: 2 },
+  completeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  completeText: { fontSize: 22, fontWeight: '700', color: '#22C55E' },
+  recommendationText: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
+  aiLabel: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  aiLabelText: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  statCell: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statLabel: { fontSize: 10, fontWeight: '600', color: '#6B7280', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statValue: { fontSize: 20, fontWeight: '700', color: '#111111' },
+  chartContainer: { marginHorizontal: -8, marginTop: 4 },
+  chart: { borderRadius: 12 },
+  targetLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  targetDash: { flex: 1, height: 1.5, backgroundColor: '#FCA5A5' },
+  targetLabel: { fontSize: 11, color: '#EF4444', fontWeight: '600' },
+  algorithmCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  algorithmInfo: { flex: 1, gap: 1 },
+  algorithmText: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
+  algorithmSubtext: { fontSize: 11, color: '#9CA3AF' },
+  loadingContainer: { paddingVertical: 60, alignItems: 'center', gap: 12 },
   loadingText: { ...IOS_TYPOGRAPHY.footnote, color: '#6B7280' },
-  offlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF7ED', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 },
-  offlineBadgeText: { ...IOS_TYPOGRAPHY.caption2, color: '#F97316', fontWeight: '600' },
-  runButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#F0FDF4', borderRadius: 50, paddingVertical: 10, paddingHorizontal: 20, borderWidth: 1.5, borderColor: '#22C55E', marginBottom: 4 },
-  runButtonText: { ...IOS_TYPOGRAPHY.callout, color: '#22C55E', fontWeight: '600' },
+  offlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#FFF7ED', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3, marginLeft: 6 },
+  offlineBadgeText: { fontSize: 10, color: '#F97316', fontWeight: '600' },
+  runButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 50,
+    paddingVertical: 11,
+    paddingHorizontal: 20,
+    borderWidth: 1.5,
+    borderColor: '#22C55E',
+  },
+  runButtonText: { fontSize: 14, color: '#22C55E', fontWeight: '600' },
 });
