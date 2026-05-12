@@ -18,14 +18,13 @@
     "test": "jest"
   },
   "jest": {
-    "preset": "jest-expo",
+    "preset": "jest-expo/universal",
     "transformIgnorePatterns": [
-      "node_modules/(?!(expo|@expo|react-native|@react-native|@react-navigation|firebase|axios)/)"
+      "node_modules/(?!(expo|expo-modules-core|@expo|react-native|@react-native|@react-navigation|firebase|axios)/)"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
-    "setupFilesAfterSetup": [],
     "testMatch": [
       "<rootDir>/src/**/__tests__/**/*.test.ts",
       "<rootDir>/src/**/__tests__/**/*.test.tsx"

@@ -39,6 +39,7 @@ export interface SensorData {
   moisture: number
   fanSpeed: number
   energy: number
+  weight?: number
   status: string
   timestamp: string
 }
@@ -56,8 +57,14 @@ export interface AlertItem {
 export interface Command {
   _id: string
   deviceId: string
-  command: 'start' | 'stop' | 'fan_control'
+  command: 'START' | 'STOP' | 'FAN_CONTROL' | 'RELAY_CONTROL' | 'STEPPER_CONTROL' | 'HEATER_CONTROL' | 'start' | 'stop' | 'fan_control'
+  commandStr?: string
   status: 'pending' | 'executed' | 'failed'
+  fanTarget?: 'FAN1' | 'FAN2' | 'ALL'
+  fanAction?: 'ON' | 'OFF'
+  relayAction?: 'ON' | 'OFF'
+  stepperAction?: 'START' | 'STOP' | 'CW' | 'CCW'
+  heaterAction?: 'ON' | 'OFF'
   parameters: {
     mode: DryerMode
     temperature?: number
@@ -419,17 +426,59 @@ class GrainApiClient {
 
     controlFan: async (
       deviceId: string,
-      fan: 'FAN1' | 'FAN2' | 'ALL',
-      action: 'ON' | 'OFF'
+      fanTarget: 'FAN1' | 'FAN2' | 'ALL',
+      fanAction: 'ON' | 'OFF'
     ): Promise<Command> => {
       const response = await this.client.post<ApiResponse<Command>>(
         `/dryer/${deviceId}/fan`,
-        { fan, action }
+        { fanTarget, fanAction }
       )
       if (response.data.data) {
         return response.data.data
       }
       throw new Error('Invalid fan control response')
+    },
+
+    controlStepper: async (
+      deviceId: string,
+      stepperAction: 'START' | 'STOP' | 'CW' | 'CCW'
+    ): Promise<Command> => {
+      const response = await this.client.post<ApiResponse<Command>>(
+        `/dryer/${deviceId}/stepper`,
+        { stepperAction }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid stepper control response')
+    },
+
+    controlRelay: async (
+      deviceId: string,
+      relayAction: 'ON' | 'OFF'
+    ): Promise<Command> => {
+      const response = await this.client.post<ApiResponse<Command>>(
+        `/dryer/${deviceId}/relay`,
+        { relayAction }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid relay control response')
+    },
+
+    controlHeater: async (
+      deviceId: string,
+      heaterAction: 'ON' | 'OFF'
+    ): Promise<Command> => {
+      const response = await this.client.post<ApiResponse<Command>>(
+        `/dryer/${deviceId}/heater`,
+        { heaterAction }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid heater control response')
     },
   }
 

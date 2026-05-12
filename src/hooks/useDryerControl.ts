@@ -3,8 +3,6 @@ import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { grainApi, isNetworkError } from '@/api';
 import type { Device } from '@/api';
-import { ref, set } from 'firebase/database';
-import { db } from '@/lib/firebase';
 import { useRealtimeSensor } from './useRealtimeSensor';
 import { useToastContext } from '@/context/ToastContext';
 import { useDryingSession } from '@/context/DryingSessionContext';
@@ -67,7 +65,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const [error, setError] = useState<string | null>(null);
 
   const deviceId = selectedDevice?.deviceId;
-  const { commandAcknowledged } = useRealtimeSensor(deviceId);
+  const { commandAcknowledged, isOnline: deviceOnline } = useRealtimeSensor(deviceId);
 
   // Restore persisted state on mount
   useEffect(() => {
@@ -173,12 +171,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     setFanSpeed(newFan);
 
     try {
-      if (db) {
-        set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-          command: 'FAN_CONTROL', mode: DryerMode.Auto,
-          temperature: newTemp, fanSpeed: newFan, timestamp: Date.now(),
-        }).catch(() => {});
-      }
       await grainApi.dryer.start(deviceId, DryerMode.Auto, newTemp, newFan);
     } catch { /* silent — next poll will retry */ }
   }, [deviceId]);
@@ -269,12 +261,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
           setIsControlling(true);
           setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
           try {
-            // Push stop command to Firebase for instant ESP32 pickup
-            if (db) {
-              set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-                command: 'STOP', timestamp: Date.now(),
-              }).catch(() => {});
-            }
             const ok = await sessionCtx.stopDrying('complete');
             if (ok) {
               showToast('Dryer stopped successfully', 'success');
@@ -300,6 +286,10 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
       Alert.alert('No Device', 'Please select a device first.');
       return;
     }
+    if (!deviceOnline) {
+      Alert.alert('Device Offline', 'Power on the prototype and wait for live sensor data before starting a drying cycle.');
+      return;
+    }
     const deviceName = selectedDevice?.name || deviceId;
     Alert.alert(
       'Start Dryer',
@@ -315,12 +305,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
             setAiAutoStopped(false);
             setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
             try {
-              // Push start command to Firebase for instant ESP32 pickup
-              if (db) {
-                set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-                  command: 'START', mode, temperature, fanSpeed, timestamp: Date.now(),
-                }).catch(() => {});
-              }
               const session = await sessionCtx.startDrying({
                 deviceId, mode, temperature, fanSpeed,
               });
@@ -344,7 +328,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         },
       ],
     );
-  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast]);
+  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast, deviceOnline]);
 
   return {
     mode,

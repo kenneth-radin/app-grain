@@ -59,6 +59,11 @@ function Chart({
     return downsample(data, maxPoints);
   }, [data, maxPoints]);
 
+  const chartData = useMemo(() => ({
+    labels: sampledData.map((d) => d[xKey] || ''),
+    datasets: [{ data: sampledData.map((d) => d[dataKey] || 0) }],
+  }), [sampledData, xKey, dataKey]);
+
   if (!sampledData || sampledData.length === 0) {
     return (
       <View style={styles.emptyContainer}>
@@ -66,11 +71,6 @@ function Chart({
       </View>
     );
   }
-
-  const chartData = useMemo(() => ({
-    labels: sampledData.map((d) => d[xKey] || ''),
-    datasets: [{ data: sampledData.map((d) => d[dataKey] || 0) }],
-  }), [sampledData, xKey, dataKey]);
 
   return (
     <View style={styles.container}>

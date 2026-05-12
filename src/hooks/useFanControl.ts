@@ -15,6 +15,9 @@ export interface FanControlState {
 }
 
 export type UseFanControlReturn = FanControlState & {
+  controlFan: (action: 'ON' | 'OFF') => Promise<void>;
+  controlFan2: (action: 'ON' | 'OFF') => Promise<void>;
+  controlAllFans: (action: 'ON' | 'OFF') => Promise<void>;
   handleFanControl: (fan: 'FAN1' | 'FAN2' | 'ALL', action: 'ON' | 'OFF') => Promise<void>;
   setSyncingUntil: (ms: number | null) => void;
   isLoading: boolean;
@@ -88,6 +91,18 @@ export function useFanControl(deviceId: string | undefined, syncingUntil: number
     }
   }, [deviceId, fan1Status, fan2Status, showToast, setSyncingUntil]);
 
+  const controlFan = useCallback((action: 'ON' | 'OFF') => {
+    return handleFanControl('FAN1', action);
+  }, [handleFanControl]);
+
+  const controlFan2 = useCallback((action: 'ON' | 'OFF') => {
+    return handleFanControl('FAN2', action);
+  }, [handleFanControl]);
+
+  const controlAllFans = useCallback((action: 'ON' | 'OFF') => {
+    return handleFanControl('ALL', action);
+  }, [handleFanControl]);
+
   return {
     fan1Status,
     fan2Status,
@@ -95,6 +110,9 @@ export function useFanControl(deviceId: string | undefined, syncingUntil: number
     fan2Loading,
     bothLoading,
     syncingUntil,
+    controlFan,
+    controlFan2,
+    controlAllFans,
     handleFanControl,
     setSyncingUntil,
     isLoading: false,

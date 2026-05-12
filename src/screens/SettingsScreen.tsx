@@ -15,7 +15,7 @@ import { useToast } from '@/context/AppContext';
 import { useDevices } from '@/hooks';
 import { Header, StatusBadge } from '@/components';
 import { DEFAULT_SETTINGS, GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
-import { StorageKeys, UserRole, DeviceStatus, DryerStatus } from '@/utils/enums';
+import { StorageKeys, UserRole, DeviceStatus } from '@/utils/enums';
 import { Routes } from '@/types/navigation';
 
 // Type-safe wrapper components
@@ -152,7 +152,7 @@ export default function SettingsScreen() {
                       <Text style={styles.deviceSub}>{device.location || 'No location'}</Text>
                     </View>
                   </View>
-                  <StatusBadge status={device.status === DeviceStatus.Online ? DryerStatus.Running : DeviceStatus.Offline} size="sm" />
+                  <StatusBadge status={device.status === DeviceStatus.Online ? DeviceStatus.Online : DeviceStatus.Offline} size="sm" />
                 </View>
               ))
             )}

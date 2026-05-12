@@ -10,7 +10,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
-import type { StalenessReason } from '@/hooks';
 import { StatusBadge, Header, GrainDryingSimulation, ProgressBar, DryingAlertBanner } from '@/components';
 import { grainApi, isNetworkError } from '@/api';
 import { useToast } from '@/context/AppContext';
@@ -20,8 +19,6 @@ import { analyzeDryingStatus } from '@/utils/dryingAlerts';
 import { triggerDryingAlertNotification } from '@/utils/pushNotifications';
 import { getGreeting, formatTimeAgo } from '@/utils/formatters';
 import { Routes } from '@/types/navigation';
-import { ref, set } from 'firebase/database';
-import { db } from '@/lib/firebase';
 import { enqueueCommand } from '@/utils/commandQueue';
 
 // Type-safe wrapper components
@@ -72,8 +69,8 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
     }, [deviceId])
   );
 
-  const liveData = rtData || polledData;
-  const fbConnected = rtData !== null;
+  const liveData = rtOnline ? (rtData || polledData) : (isFallbackMode ? polledData : null);
+  const fbConnected = rtOnline && rtData !== null;
 
   const isServerUnreachable = !fbConnected && polledStaleness === 'server_unreachable';
 
@@ -96,38 +93,16 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           // Optimistic UI: update immediately
           addCommand('START (auto)');
           try {
-            const restPromise = grainApi.dryer.start(deviceId, DryerMode.Auto);
-            const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-              command: 'START',
-              mode: DryerMode.Auto,
-              timestamp: Date.now(),
-            }) : Promise.reject(new Error('Firebase database not initialized'));
-            const results = await Promise.allSettled([restPromise, fbPromise]);
-            const [restResult, fbResult] = results;
-
-            if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              showToast('Dryer started successfully', 'success');
-            } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
-              console.warn('[Firebase] Dual-write start failed:', fbResult.reason);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              showToast('Dryer started — Firebase sync failed', 'warning');
-            } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
-              if (isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode: DryerMode.Auto }, queuedAt: Date.now() });
-                showToast('Offline — start command queued', 'warning');
-              } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                showToast(restResult.reason?.message || 'Failed to start dryer', 'error');
-              }
+            await grainApi.dryer.start(deviceId, DryerMode.Auto);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('Dryer started successfully', 'success');
+          } catch (err) {
+            if (isNetworkError(err)) {
+              await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode: DryerMode.Auto }, queuedAt: Date.now() });
+              showToast('Offline — start command queued', 'warning');
             } else {
-              if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode: DryerMode.Auto }, queuedAt: Date.now() });
-                showToast('Offline — start command queued (Firebase also failed)', 'warning');
-              } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                showToast('REST & Firebase both failed', 'error');
-              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              showToast(err instanceof Error ? err.message : 'Failed to start dryer', 'error');
             }
           } finally { setIsControlling(false); }
         },
@@ -148,37 +123,16 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           // Optimistic UI: update immediately
           addCommand('STOP');
           try {
-            const restPromise = grainApi.dryer.stop(deviceId);
-            const fbPromise = db ? set(ref(db, `grain/commands/${deviceId}/pending/latest`), {
-              command: 'STOP',
-              timestamp: Date.now(),
-            }) : Promise.reject(new Error('Firebase database not initialized'));
-            const results = await Promise.allSettled([restPromise, fbPromise]);
-            const [restResult, fbResult] = results;
-
-            if (restResult.status === 'fulfilled' && fbResult.status === 'fulfilled') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              showToast('Dryer stopped successfully', 'success');
-            } else if (restResult.status === 'fulfilled' && fbResult.status === 'rejected') {
-              console.warn('[Firebase] Dual-write stop failed:', fbResult.reason);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              showToast('Dryer stopped — Firebase sync failed', 'warning');
-            } else if (restResult.status === 'rejected' && fbResult.status === 'fulfilled') {
-              if (isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
-                showToast('Offline — stop command queued', 'warning');
-              } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                showToast(restResult.reason?.message || 'Failed to stop dryer', 'error');
-              }
+            await grainApi.dryer.stop(deviceId);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showToast('Dryer stopped successfully', 'success');
+          } catch (err) {
+            if (isNetworkError(err)) {
+              await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
+              showToast('Offline — stop command queued', 'warning');
             } else {
-              if (restResult.status === 'rejected' && isNetworkError(restResult.reason)) {
-                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
-                showToast('Offline — stop command queued (Firebase also failed)', 'warning');
-              } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                showToast('REST & Firebase both failed', 'error');
-              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              showToast(err instanceof Error ? err.message : 'Failed to stop dryer', 'error');
             }
           } finally { setIsControlling(false); }
         },
@@ -192,9 +146,11 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const humidity = liveData?.humidity ?? 42.3;
   const energy = liveData?.energy ?? 2.4;
   const fanSpeed = liveData?.fanSpeed ?? 75;
-  const status = liveData?.status ?? 'idle';
-  const isOnline = device ? (rtOnline || device.status === DeviceStatus.Online) : false;
-  const isRunning = status === DryerStatus.Running || status === 'drying';
+  const weight = liveData?.weight;
+  const status = rtOnline ? (liveData?.status ?? 'idle') : 'idle';
+  const isOnline = Boolean(device && rtOnline);
+  const isRunning = isOnline && (status === DryerStatus.Running || status === 'drying');
+  const hasLiveData = isOnline && liveData !== null;
   const targetM = DRYING.TARGET_MOISTURE;
 
   const progress = useMemo(
@@ -212,11 +168,6 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
     [lastUpdated],
   );
 
-  const effectiveStaleness: StalenessReason = useMemo(
-    () => polledStaleness ?? (isStale ? (isServerUnreachable ? 'server_unreachable' : 'sensor_not_sending') : null),
-    [polledStaleness, isStale, isServerUnreachable],
-  );
-
   const dryingAlert = useMemo(
     () => analyzeDryingStatus(moisture, targetM, temp),
     [moisture, targetM, temp],
@@ -229,15 +180,16 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
     }
   }, [dryingAlert, device?.deviceId]);
 
-  const staleVal = isVeryStale ? '- -' : null;
+  const staleVal = !hasLiveData ? '—' : isVeryStale ? '- -' : null;
   const sensors = useMemo(() => [
     { icon: 'thermometer-outline', val: staleVal ?? `${temp} °C`, label: 'TEMPERATURE', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'water-outline', val: staleVal ?? `${humidity} %`, label: 'HUMIDITY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
     { icon: 'analytics-outline', val: staleVal ?? `${moisture} %`, label: 'MOISTURE', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
+    { icon: 'scale-outline', val: staleVal ?? (weight ? `${weight} kg` : '—'), label: 'GRAIN WEIGHT', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
     { icon: 'flash-outline', val: staleVal ?? `${energy} kWh`, label: 'ENERGY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
     { icon: 'speedometer-outline', val: staleVal ?? `${fanSpeed} %`, label: 'FAN SPEED', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'pulse-outline', val: staleVal ?? status.toUpperCase(), label: 'STATUS', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
-  ], [staleVal, temp, humidity, moisture, energy, fanSpeed, status]);
+  ], [staleVal, temp, humidity, moisture, weight, energy, fanSpeed, status]);
 
   // Conditional returns must come after all hooks
   if (deviceLoading) {
@@ -281,12 +233,12 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
               <Text style={s.greetSub}>Monitor your grain dryer</Text>
             </View>
             <View style={s.statusRow}>
-              <StatusBadge status={isOnline ? DryerStatus.Running : DeviceStatus.Offline} size="md" />
+              <StatusBadge status={isRunning ? DryerStatus.Running : isOnline ? DeviceStatus.Online : DeviceStatus.Offline} size="md" />
               {fbConnected && (<View style={s.liveBadge}><View style={s.liveDot} /><Text style={s.liveTxt}>LIVE</Text></View>)}
             </View>
           </View>
 
-          <Text style={s.lastUpd}>Last updated: {lastUpdated ? formatTimeAgo(lastUpdated) : '--'}{!fbConnected && polledData ? ' (polling)' : ''}</Text>
+          <Text style={s.lastUpd}>Last updated: {isOnline && lastUpdated ? formatTimeAgo(lastUpdated) : '--'}{!fbConnected && polledData && isOnline ? ' (polling)' : ''}</Text>
 
           {/* Command Status Banner */}
           {commandStatus && (

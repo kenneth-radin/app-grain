@@ -21,8 +21,8 @@ import { useAIPrediction } from '@/hooks/useAIPrediction';
 import { useDryingSession } from '@/context/DryingSessionContext';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, COLORS } from '@/utils/constants';
+import { DeviceStatus } from '@/utils/enums';
 import { formatTimeAgo } from '@/utils/formatters';
-import type { DryingSession } from '@/api';
 
 const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
 const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
@@ -90,6 +90,11 @@ export default function SessionsScreen() {
   const handleStart = async () => {
     if (!selectedDeviceId) {
       showToast('Please select a device', 'warning');
+      return;
+    }
+    const selectedDevice = devices.find(device => device.deviceId === selectedDeviceId);
+    if (!selectedDevice || selectedDevice.status !== DeviceStatus.Online) {
+      showToast('Device is offline. Power on the prototype and wait for live sensor data first.', 'warning');
       return;
     }
     setStarting(true);
@@ -282,17 +287,26 @@ export default function SessionsScreen() {
             {/* Device Picker */}
             <Text style={styles.inputLabel}>Device</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {(devices || []).map((d) => (
+              {(devices || []).map((d) => {
+                const isOffline = d.status !== DeviceStatus.Online;
+                return (
                 <TouchableOpacity
                   key={d.deviceId}
-                  style={[styles.chip, selectedDeviceId === d.deviceId && styles.chipActive]}
-                  onPress={() => setSelectedDeviceId(d.deviceId)}
+                  style={[styles.chip, selectedDeviceId === d.deviceId && styles.chipActive, isOffline && styles.chipDisabled]}
+                  onPress={() => {
+                    if (isOffline) {
+                      showToast(`${d.deviceId} is offline`, 'warning');
+                      return;
+                    }
+                    setSelectedDeviceId(d.deviceId);
+                  }}
                 >
-                  <Text style={[styles.chipText, selectedDeviceId === d.deviceId && styles.chipTextActive]}>
-                    {d.deviceId}
+                  <Text style={[styles.chipText, selectedDeviceId === d.deviceId && styles.chipTextActive, isOffline && styles.chipTextDisabled]}>
+                    {d.deviceId}{isOffline ? ' · Offline' : ''}
                   </Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </ScrollView>
 
             {/* Grain Type */}
@@ -416,8 +430,10 @@ const styles = StyleSheet.create({
   chipScroll: { marginBottom: 4 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', marginRight: 8 },
   chipActive: { backgroundColor: COLORS.primary },
+  chipDisabled: { backgroundColor: '#F9FAFB', opacity: 0.65 },
   chipText: { fontSize: 13, fontWeight: '500', color: '#374151' },
   chipTextActive: { color: '#fff' },
+  chipTextDisabled: { color: '#9CA3AF' },
   targetRow: { flexDirection: 'row', gap: 8 },
   modalButtons: { flexDirection: 'row', gap: 12, marginTop: 24 },
   cancelBtn: { flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 12, backgroundColor: '#F3F4F6' },

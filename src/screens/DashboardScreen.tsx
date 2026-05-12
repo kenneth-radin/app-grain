@@ -13,12 +13,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut, createAnimatedComponent } from 'react-native-reanimated';
+import { FadeIn, FadeOut, createAnimatedComponent } from 'react-native-reanimated';
 import { ref, onValue, off } from 'firebase/database';
 import { db } from '@/lib/firebase';
-import { useDevices } from '@/hooks';
+import { useDevices, useRealtimeSensor, useSensorData } from '@/hooks';
 import { useDryingSession } from '@/context/DryingSessionContext';
-import { Header, StatusBadge, DryingAlertBanner } from '@/components';
+import { Header, StatusBadge, DryingAlertBanner, SensorCard } from '@/components';
 import { GRADIENTS, IOS_TYPOGRAPHY, DRYING, COLORS } from '@/utils/constants';
 import { DeviceStatus } from '@/utils/enums';
 import { analyzeDryingStatus } from '@/utils/dryingAlerts';
@@ -49,6 +49,20 @@ function SkeletonDeviceCards() {
 }
 
 const STALE_MS = 30_000; // re-fetch only if data is older than 30s
+const DEVICE_ONLINE_TIMEOUT_MS = 45_000;
+
+function toTimestampMs(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+function isFreshDeviceOnline(firebaseDevice: any): boolean {
+  if (!firebaseDevice || firebaseDevice.status !== DeviceStatus.Online) return false;
+  const lastActive = toTimestampMs(firebaseDevice.lastActive);
+  const sensorUpdatedAt = toTimestampMs(firebaseDevice.sensors?.updatedAt);
+  const latestHeartbeat = Math.max(lastActive ?? 0, sensorUpdatedAt ?? 0);
+  return latestHeartbeat > 0 && Date.now() - latestHeartbeat <= DEVICE_ONLINE_TIMEOUT_MS;
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -57,9 +71,21 @@ export default function DashboardScreen() {
   const [devices, setDevices] = useState<Device[]>(apiDevices);
   const [refreshing, setRefreshing] = useState(false);
   const lastFetchRef = React.useRef<number>(0);
+  const firebaseDevicesRef = React.useRef<Record<string, any> | null>(null);
+  const dashboardDevice = useMemo(() => {
+    if (activeSession?.deviceId) {
+      return devices.find(device => device.deviceId === activeSession.deviceId) ?? null;
+    }
+    return devices.find(device => device.status === DeviceStatus.Online) ?? devices[0] ?? null;
+  }, [activeSession?.deviceId, devices]);
+  const { sensorData: realtimeSensor, isOnline: dashboardDeviceOnline, isFallbackMode } = useRealtimeSensor(dashboardDevice?.deviceId);
+  const { latestData: fallbackSensor } = useSensorData(dashboardDevice?.deviceId, isFallbackMode);
+  const dashboardSensor = dashboardDeviceOnline ? (realtimeSensor || fallbackSensor) : null;
+  const grainWeight = dashboardSensor?.weight;
+  const grainWeightDisplay = grainWeight ? grainWeight : '—';
 
   const dryingAlert = useMemo(() => {
-    const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
+    const onlineDevice = dashboardDeviceOnline ? dashboardDevice : null;
     if (!onlineDevice) return null;
     // latestMoisture/latestTemperature are injected at runtime by the Firebase listener below
     const d = onlineDevice as Device & { latestMoisture?: number; latestTemperature?: number };
@@ -68,15 +94,15 @@ export default function DashboardScreen() {
       DRYING.TARGET_MOISTURE,
       d.latestTemperature ?? 45,
     );
-  }, [devices]);
+  }, [dashboardDevice, dashboardDeviceOnline]);
 
   // Fire local push notification when drying alert changes to non-normal
   useEffect(() => {
     if (dryingAlert && dryingAlert.type !== 'normal') {
-      const onlineDevice = devices.find(d => d.status === DeviceStatus.Online);
+      const onlineDevice = dashboardDeviceOnline ? dashboardDevice : null;
       triggerDryingAlertNotification(dryingAlert, onlineDevice?.deviceId);
     }
-  }, [dryingAlert]); // eslint-disable-line react-hooks/exhaustive-deps -- devices is captured via dryingAlert which already depends on devices
+  }, [dryingAlert, dashboardDevice, dashboardDeviceOnline]);
 
   // Sync API devices into state
   useEffect(() => {
@@ -94,23 +120,32 @@ export default function DashboardScreen() {
     }, [refetch])
   );
 
-  // Subscribe to Firebase realtime device statuses
+  const applyFirebaseDeviceStatuses = useCallback(() => {
+    const firebaseDevices = firebaseDevicesRef.current;
+    if (!firebaseDevices) return;
+
+    setDevices(prev => prev.map(device => ({
+      ...device,
+      status: isFreshDeviceOnline(firebaseDevices[device.deviceId]) ? DeviceStatus.Online : DeviceStatus.Offline,
+    })));
+  }, []);
+
+  // Subscribe to Firebase realtime device liveness
   useEffect(() => {
     if (!db || apiDevices.length === 0) return
 
     const statusRef = ref(db, 'grain/devices')
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-      const firebaseDevices = snapshot.val()
-      if (firebaseDevices) {
-        setDevices(prev => prev.map(device => ({
-          ...device,
-          status: firebaseDevices[device.deviceId]?.status ?? device.status
-        })))
-      }
+    onValue(statusRef, (snapshot) => {
+      firebaseDevicesRef.current = snapshot.val()
+      applyFirebaseDeviceStatuses()
     })
+    const interval = setInterval(applyFirebaseDeviceStatuses, 5000)
 
-    return () => off(statusRef)
-  }, [apiDevices.length])
+    return () => {
+      off(statusRef)
+      clearInterval(interval)
+    }
+  }, [apiDevices.length, applyFirebaseDeviceStatuses])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -187,26 +222,58 @@ const AnimatedView = createAnimatedComponent(View);
             {/* Active Drying Session Card */}
             {activeSession && (
               <TouchableOpacity
-                style={[styles.aiCard, { borderLeftWidth: 3, borderLeftColor: COLORS.primary }]}
+                style={[styles.aiCard, { borderLeftWidth: 3, borderLeftColor: dashboardDeviceOnline ? COLORS.primary : COLORS.gray[300] }]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.Sessions); }}
                 activeOpacity={0.7}
               >
                 <View style={styles.aiCardLeft}>
-                  <View style={[styles.aiIconBg, { backgroundColor: '#DCFCE7' }]}>
-                    <Ionicons name="leaf" size={20} color={COLORS.primary} />
+                  <View style={[styles.aiIconBg, { backgroundColor: dashboardDeviceOnline ? '#DCFCE7' : '#F3F4F6' }]}>
+                    <Ionicons name="leaf" size={20} color={dashboardDeviceOnline ? COLORS.primary : '#9CA3AF'} />
                   </View>
                   <View style={styles.aiCardText}>
-                    <Text style={styles.aiCardTitle}>Drying: {activeSession.deviceId}</Text>
+                    <Text style={styles.aiCardTitle}>{dashboardDeviceOnline ? 'Drying' : 'Session offline'}: {activeSession.deviceId}</Text>
                     <Text style={styles.aiCardSub}>
-                      {activeSession.currentMoisture?.toFixed(1)}% → {activeSession.targetMoisture}% | {activeSession.grainType}
+                      {dashboardDeviceOnline
+                        ? `${activeSession.currentMoisture?.toFixed(1)}% → ${activeSession.targetMoisture}% | ${activeSession.grainType}`
+                        : 'Prototype is offline. Live drying is paused.'}
                     </Text>
                   </View>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginBottom: 2 }} />
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dashboardDeviceOnline ? COLORS.primary : '#9CA3AF', marginBottom: 2 }} />
                   <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
                 </View>
               </TouchableOpacity>
+            )}
+
+            {dashboardDevice && (
+              <View style={styles.sensorSection}>
+                <View style={styles.sensorSectionHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sensorSectionTitle}>Live Sensors</Text>
+                    <Text style={styles.sensorSectionSubtitle}>
+                      {dashboardDeviceOnline
+                        ? `${dashboardDevice.name || dashboardDevice.deviceId} is sending data`
+                        : `${dashboardDevice.name || dashboardDevice.deviceId} is offline`}
+                    </Text>
+                  </View>
+                  <StatusBadge status={dashboardDeviceOnline ? DeviceStatus.Online : DeviceStatus.Offline} size="sm" />
+                </View>
+                <View style={styles.sensorCardsGrid}>
+                  <View style={styles.sensorCardWrap}>
+                    <SensorCard type="temperature" label="Temperature" value={dashboardSensor?.temperature ?? '—'} unit="°C" />
+                  </View>
+                  <View style={styles.sensorCardWrap}>
+                    <SensorCard type="humidity" label="Humidity" value={dashboardSensor?.humidity ?? '—'} unit="%" />
+                  </View>
+                  <View style={styles.sensorCardWrap}>
+                    <SensorCard type="moisture" label="Moisture" value={dashboardSensor?.moisture ?? '—'} unit="%" />
+                  </View>
+                  <View style={styles.sensorCardWrap}>
+                    <SensorCard type="weight" label="Grain Weight" value={grainWeightDisplay} unit="kg" />
+                  </View>
+                </View>
+              </View>
             )}
 
             {isLoading && devices.length === 0 ? (
@@ -289,6 +356,34 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 6,
     paddingVertical: 14,
+  },
+  sensorSection: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  sensorSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sensorSectionTitle: {
+    ...IOS_TYPOGRAPHY.headline,
+    color: COLORS.textPrimary,
+  },
+  sensorSectionSubtitle: {
+    ...IOS_TYPOGRAPHY.caption1,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  sensorCardsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sensorCardWrap: {
+    flex: 1,
+    minWidth: '45%',
   },
   titleRow: {
     flexDirection: 'row',

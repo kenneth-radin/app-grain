@@ -1,3 +1,45 @@
 {
-  "extends": "next/core-web-vitals"
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint", "react", "react-hooks"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "env": {
+    "es2022": true,
+    "node": true
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/no-unescaped-entities": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-require-imports": "off",
+    "@typescript-eslint/no-duplicate-enum-values": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "react-hooks/exhaustive-deps": "warn",
+    "no-useless-catch": "warn",
+    "no-useless-escape": "warn"
+  }
 }
