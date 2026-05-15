@@ -27,14 +27,14 @@ export function CommandStatusBanner({
           <Text style={styles.syncBannerText}>Command received by device</Text>
         </View>
       ) : commandTimeout ? (
-        <View style={[styles.syncBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+        <View style={[styles.syncBanner, styles.timeoutBanner]}>
           <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
-          <Text style={[styles.syncBannerText, { color: COLORS.danger }]}>Device not responding</Text>
+          <Text style={[styles.syncBannerText, { color: COLORS.danger }]}>Command timed out. Queue unlocked.</Text>
         </View>
       ) : syncingUntil !== null && Date.now() < syncingUntil ? (
         <View style={styles.syncBanner}>
           <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.syncBannerText}>Syncing with device...</Text>
+          <Text style={styles.syncBannerText}>Sending command to prototype...</Text>
         </View>
       ) : null}
 
@@ -66,6 +66,9 @@ const styles = StyleSheet.create({
     ...IOS_TYPOGRAPHY.footnote,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  timeoutBanner: {
+    backgroundColor: 'rgba(239,68,68,0.1)',
   },
   offlineBanner: {
     flexDirection: 'row',

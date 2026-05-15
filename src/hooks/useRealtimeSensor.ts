@@ -4,8 +4,6 @@ import { db } from '@/lib/firebase'
 import { DeviceStatus } from '@/utils/enums'
 import { isSensorData } from '@/utils/typeGuards'
 
-const DEVICE_ONLINE_TIMEOUT_MS = 45_000
-
 export interface RealtimeSensorData {
   temperature: number
   humidity: number
@@ -17,13 +15,25 @@ export interface RealtimeSensorData {
   updatedAt: number
 }
 
+export interface RealtimeRuntimeState {
+  isRunning?: boolean
+  currentMode?: 'AUTO' | 'MANUAL'
+  heaterState?: 'ON' | 'OFF'
+  fan1State?: 'ON' | 'OFF'
+  fan2State?: 'ON' | 'OFF'
+  relayState?: 'ON' | 'OFF'
+  stepperState?: 'ON' | 'OFF' | 'CW' | 'CCW'
+  pendingCommand?: string | null
+  activeCommand?: string | null
+  lastCommand?: string | null
+  commandStatus?: 'idle' | 'pending' | 'polled' | 'executing' | 'executed' | 'failed' | 'timeout' | 'error'
+  commandAcknowledged?: boolean
+  lastHeartbeat?: number
+}
+
 function toTimestampMs(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return value < 1_000_000_000_000 ? value * 1000 : value
-}
-
-function isFresh(timestamp: number | null): boolean {
-  return timestamp !== null && Date.now() - timestamp <= DEVICE_ONLINE_TIMEOUT_MS
 }
 
 function cleanupListeners(refs: React.MutableRefObject<Unsubscribe[]>) {
@@ -41,20 +51,14 @@ export function useRealtimeSensor(deviceId?: string) {
   const [commandAcknowledged, setCommandAcknowledged] = useState(false)
   const [isFallbackMode, setIsFallbackMode] = useState(!db)
   const [deviceStatus, setDeviceStatus] = useState<string | null>(null)
-  const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null)
+  const [runtimeState, setRuntimeState] = useState<RealtimeRuntimeState | null>(null)
   const prevStatusRef = useRef<string | null>(null)
   const lastCommandTimestampRef = useRef<number>(0)
   const unsubsRef = useRef<Unsubscribe[]>([])
 
   useEffect(() => {
-    const updateOnline = () => {
-      setIsOnline(deviceStatus === DeviceStatus.Online && isFresh(lastHeartbeatAt))
-    }
-
-    updateOnline()
-    const interval = setInterval(updateOnline, 5000)
-    return () => clearInterval(interval)
-  }, [deviceStatus, lastHeartbeatAt])
+    setIsOnline(deviceStatus === DeviceStatus.Online)
+  }, [deviceStatus])
 
   useEffect(() => {
     // Clean up any previous listeners before setting up new ones
@@ -67,7 +71,7 @@ export function useRealtimeSensor(deviceId?: string) {
       setRemoteCommand(null)
       setCommandAcknowledged(false)
       setDeviceStatus(null)
-      setLastHeartbeatAt(null)
+      setRuntimeState(null)
       setIsFallbackMode(true)
       return
     }
@@ -80,13 +84,13 @@ export function useRealtimeSensor(deviceId?: string) {
     setCommandAcknowledged(false)
     setIsFallbackMode(false)
     setDeviceStatus(null)
-    setLastHeartbeatAt(null)
+    setRuntimeState(null)
     prevStatusRef.current = null
     lastCommandTimestampRef.current = 0
 
     const sensorRef = ref(db, `grain/devices/${deviceId}/sensors`)
     const statusRef = ref(db, `grain/devices/${deviceId}/status`)
-    const lastActiveRef = ref(db, `grain/devices/${deviceId}/lastActive`)
+    const runtimeRef = ref(db, `grain/devices/${deviceId}/runtimeState`)
     const commandRef = ref(db, `grain/devices/${deviceId}/lastCommand`)
     const executedRef = ref(db, `grain/commands/${deviceId}/executed`)
 
@@ -96,7 +100,6 @@ export function useRealtimeSensor(deviceId?: string) {
         const updatedAt = toTimestampMs(raw.updatedAt) ?? Date.now()
         setSensorData(raw)
         setLastUpdated(new Date(updatedAt))
-        setLastHeartbeatAt(current => Math.max(current ?? 0, updatedAt))
         // Detect remote status changes for toast notifications
         const newStatus = raw.status
         if (prevStatusRef.current && prevStatusRef.current !== newStatus) {
@@ -116,8 +119,8 @@ export function useRealtimeSensor(deviceId?: string) {
       setDeviceStatus(snapshot.val())
     }))
 
-    unsubsRef.current.push(onValue(lastActiveRef, (snapshot) => {
-      setLastHeartbeatAt(current => Math.max(current ?? 0, toTimestampMs(snapshot.val()) ?? 0))
+    unsubsRef.current.push(onValue(runtimeRef, (snapshot) => {
+      setRuntimeState(snapshot.val())
     }))
 
     unsubsRef.current.push(onValue(commandRef, (snapshot) => {
@@ -140,5 +143,13 @@ export function useRealtimeSensor(deviceId?: string) {
     }
   }, [deviceId])
 
-  return { sensorData, isOnline, isFallbackMode, lastUpdated, remoteCommand, commandAcknowledged }
+  return {
+    sensorData,
+    isOnline,
+    isFallbackMode,
+    lastUpdated,
+    remoteCommand,
+    commandAcknowledged: commandAcknowledged || runtimeState?.commandAcknowledged === true,
+    runtimeState,
+  }
 }

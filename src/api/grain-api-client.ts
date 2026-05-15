@@ -29,6 +29,25 @@ export interface Device {
   status: DeviceStatus
   isOnline: boolean
   lastSeen: string
+  runtimeState?: {
+    isRunning?: boolean
+    currentMode?: DryerMode
+    heaterState?: 'ON' | 'OFF'
+    fan1State?: 'ON' | 'OFF'
+    fan2State?: 'ON' | 'OFF'
+    relayState?: 'ON' | 'OFF'
+    stepperState?: 'ON' | 'OFF' | 'CW' | 'CCW'
+    pendingCommand?: string | null
+    activeCommand?: string | null
+    lastCommand?: string | null
+    commandStatus?: 'idle' | 'pending' | 'polled' | 'executing' | 'executed' | 'failed' | 'timeout' | 'error'
+    commandAcknowledged?: boolean
+    lastHeartbeat?: string
+    currentTemperature?: number
+    currentHumidity?: number
+    currentMoisture?: number
+    currentWeight?: number
+  }
 }
 
 export interface SensorData {
@@ -250,6 +269,80 @@ class GrainApiClient {
     return err
   }
 
+  private getErrorStatus(error: unknown): number | undefined {
+    return typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : undefined
+  }
+
+  private async sendCommandViaDryerEndpoint(deviceId: string, command: string): Promise<Command> {
+    const normalized = command.trim().toUpperCase()
+
+    const postDryerCommand = async (path: string, payload: Record<string, unknown>): Promise<Command> => {
+      const response = await this.client.post<ApiResponse<Command>>(path, payload)
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid command response')
+    }
+
+    if (normalized.startsWith('START:')) {
+      const [, rawMode, rawTemperature, rawFanSpeed] = normalized.split(':')
+      const mode = rawMode === 'AUTO' || rawMode === 'MANUAL' ? rawMode : 'MANUAL'
+      const temperature = Number.parseInt(rawTemperature || '45', 10)
+      const fanSpeed = Number.parseInt(rawFanSpeed || '80', 10)
+
+      return postDryerCommand(`/dryer/${deviceId}/start`, {
+        mode,
+        temperature: Number.isFinite(temperature) ? temperature : 45,
+        fanSpeed: Number.isFinite(fanSpeed) ? fanSpeed : 80,
+      })
+    }
+
+    if (normalized === 'STOP') {
+      return postDryerCommand(`/dryer/${deviceId}/stop`, {})
+    }
+
+    if (normalized.startsWith('FAN:')) {
+      const [, rawTarget, rawAction] = normalized.split(':')
+      const fanTarget = rawTarget === 'FAN1' || rawTarget === 'FAN2' || rawTarget === 'ALL'
+        ? rawTarget
+        : 'FAN1'
+      const fanAction = rawAction === 'OFF' ? 'OFF' : 'ON'
+
+      return postDryerCommand(`/dryer/${deviceId}/fan`, {
+        fanTarget,
+        fanAction,
+      })
+    }
+
+    if (normalized.startsWith('STEP:')) {
+      const stepperAction = normalized.split(':')[1]
+      if (
+        stepperAction === 'START' ||
+        stepperAction === 'STOP' ||
+        stepperAction === 'CW' ||
+        stepperAction === 'CCW'
+      ) {
+        return postDryerCommand(`/dryer/${deviceId}/stepper`, { stepperAction })
+      }
+    }
+
+    if (normalized === 'R1:1' || normalized === 'R1:0') {
+      return postDryerCommand(`/dryer/${deviceId}/relay`, {
+        relayAction: normalized === 'R1:1' ? 'ON' : 'OFF',
+      })
+    }
+
+    if (normalized === 'H1:1' || normalized === 'H1:0') {
+      return postDryerCommand(`/dryer/${deviceId}/heater`, {
+        heaterAction: normalized === 'H1:1' ? 'ON' : 'OFF',
+      })
+    }
+
+    throw new Error(`Unsupported command: ${command}`)
+  }
+
   // ─── Auth ─────────────────────────────────────────────────
 
   auth = {
@@ -384,34 +477,38 @@ class GrainApiClient {
   // ─── Dryer Control ────────────────────────────────────────
 
   dryer = {
+    sendCommand: async (deviceId: string, command: string): Promise<Command> => {
+      try {
+        const response = await this.client.post<ApiResponse<Command>>(
+          '/commands',
+          { deviceId, command }
+        )
+        if (response.data.data) {
+          return response.data.data
+        }
+        throw new Error('Invalid command response')
+      } catch (error) {
+        if (this.getErrorStatus(error) === 404) {
+          return this.sendCommandViaDryerEndpoint(deviceId, command)
+        }
+        throw error
+      }
+    },
+
     start: async (
       deviceId: string,
       mode: DryerMode,
       temperature?: number,
       fanSpeed?: number
     ): Promise<Command> => {
-      const body: any = { mode }
-      if (temperature !== undefined) body.temperature = temperature
-      if (fanSpeed !== undefined) body.fanSpeed = fanSpeed
-
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/start`,
-        body
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid start response')
+      const hardwareMode = mode === DryerMode.Auto ? 'AUTO' : 'MANUAL'
+      const hardwareTemp = Math.round(temperature ?? 45)
+      const hardwareFan = Math.round(fanSpeed ?? 80)
+      return this.dryer.sendCommand(deviceId, `START:${hardwareMode}:${hardwareTemp}:${hardwareFan}`)
     },
 
     stop: async (deviceId: string): Promise<Command> => {
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/stop`
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid stop response')
+      return this.dryer.sendCommand(deviceId, 'STOP')
     },
 
     getCommands: async (deviceId: string): Promise<Command[]> => {
@@ -429,56 +526,28 @@ class GrainApiClient {
       fanTarget: 'FAN1' | 'FAN2' | 'ALL',
       fanAction: 'ON' | 'OFF'
     ): Promise<Command> => {
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/fan`,
-        { fanTarget, fanAction }
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid fan control response')
+      return this.dryer.sendCommand(deviceId, `FAN:${fanTarget}:${fanAction}`)
     },
 
     controlStepper: async (
       deviceId: string,
       stepperAction: 'START' | 'STOP' | 'CW' | 'CCW'
     ): Promise<Command> => {
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/stepper`,
-        { stepperAction }
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid stepper control response')
+      return this.dryer.sendCommand(deviceId, `STEP:${stepperAction}`)
     },
 
     controlRelay: async (
       deviceId: string,
       relayAction: 'ON' | 'OFF'
     ): Promise<Command> => {
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/relay`,
-        { relayAction }
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid relay control response')
+      return this.dryer.sendCommand(deviceId, relayAction === 'ON' ? 'R1:1' : 'R1:0')
     },
 
     controlHeater: async (
       deviceId: string,
       heaterAction: 'ON' | 'OFF'
     ): Promise<Command> => {
-      const response = await this.client.post<ApiResponse<Command>>(
-        `/dryer/${deviceId}/heater`,
-        { heaterAction }
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid heater control response')
+      return this.dryer.sendCommand(deviceId, heaterAction === 'ON' ? 'H1:1' : 'H1:0')
     },
   }
 

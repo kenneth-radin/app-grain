@@ -92,6 +92,10 @@ export default function SessionsScreen() {
       showToast('Please select a device', 'warning');
       return;
     }
+    if (activeSession?.deviceId === selectedDeviceId) {
+      showToast(`${selectedDeviceId} already has an active drying session`, 'warning');
+      return;
+    }
     const selectedDevice = devices.find(device => device.deviceId === selectedDeviceId);
     if (!selectedDevice || selectedDevice.status !== DeviceStatus.Online) {
       showToast('Device is offline. Power on the prototype and wait for live sensor data first.', 'warning');
@@ -290,19 +294,31 @@ export default function SessionsScreen() {
               {(devices || []).map((d) => {
                 const isOffline = d.status !== DeviceStatus.Online;
                 return (
-                <TouchableOpacity
+              <TouchableOpacity
                   key={d.deviceId}
-                  style={[styles.chip, selectedDeviceId === d.deviceId && styles.chipActive, isOffline && styles.chipDisabled]}
+                  style={[
+                    styles.chip,
+                    selectedDeviceId === d.deviceId && styles.chipActive,
+                    (isOffline || activeSession?.deviceId === d.deviceId) && styles.chipDisabled,
+                  ]}
                   onPress={() => {
                     if (isOffline) {
                       showToast(`${d.deviceId} is offline`, 'warning');
                       return;
                     }
+                    if (activeSession?.deviceId === d.deviceId) {
+                      showToast(`${d.deviceId} already has an active session`, 'warning');
+                      return;
+                    }
                     setSelectedDeviceId(d.deviceId);
                   }}
                 >
-                  <Text style={[styles.chipText, selectedDeviceId === d.deviceId && styles.chipTextActive, isOffline && styles.chipTextDisabled]}>
-                    {d.deviceId}{isOffline ? ' · Offline' : ''}
+                  <Text style={[
+                    styles.chipText,
+                    selectedDeviceId === d.deviceId && styles.chipTextActive,
+                    (isOffline || activeSession?.deviceId === d.deviceId) && styles.chipTextDisabled,
+                  ]}>
+                    {d.deviceId}{isOffline ? ' · Offline' : activeSession?.deviceId === d.deviceId ? ' · Active' : ''}
                   </Text>
                 </TouchableOpacity>
                 );

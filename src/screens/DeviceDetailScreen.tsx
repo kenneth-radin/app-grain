@@ -10,7 +10,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
-import { StatusBadge, Header, GrainDryingSimulation, ProgressBar, DryingAlertBanner } from '@/components';
+import { StatusBadge, Header, GrainDryingSimulation, DryingAlertBanner } from '@/components';
 import { grainApi, isNetworkError } from '@/api';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
@@ -153,11 +153,6 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const hasLiveData = isOnline && liveData !== null;
   const targetM = DRYING.TARGET_MOISTURE;
 
-  const progress = useMemo(
-    () => moisture <= targetM ? 100 : Math.max(0, Math.round(((100 - moisture) / (100 - targetM)) * 100)),
-    [moisture, targetM],
-  );
-
   const isStale = useMemo(
     () => lastUpdated ? (Date.now() - lastUpdated.getTime()) > DRYING.STALE_THRESHOLD_MS : false,
     [lastUpdated],
@@ -254,8 +249,6 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           )}
 
           <GrainDryingSimulation moisture={moisture} temperature={temp} isRunning={isRunning} targetMoisture={targetM} />
-
-          <View style={s.card}><ProgressBar progress={progress} timeRemaining={isRunning ? 'Estimating...' : '--'} showLabel={true} showTime={true} /></View>
 
           {/* Stale Data Warning — distinguish server offline vs sensor not sending */}
           {(isStale && lastUpdated) || isServerUnreachable ? (

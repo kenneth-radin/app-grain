@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { FadeIn, FadeOut, createAnimatedComponent } from 'react-native-reanimated';
 import { ref, onValue, off } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import { useDevices, useRealtimeSensor, useSensorData } from '@/hooks';
@@ -49,19 +48,20 @@ function SkeletonDeviceCards() {
 }
 
 const STALE_MS = 30_000; // re-fetch only if data is older than 30s
-const DEVICE_ONLINE_TIMEOUT_MS = 45_000;
-
-function toTimestampMs(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  return value < 1_000_000_000_000 ? value * 1000 : value;
+function isFreshDeviceOnline(firebaseDevice: any): boolean {
+  return firebaseDevice?.status === DeviceStatus.Online;
 }
 
-function isFreshDeviceOnline(firebaseDevice: any): boolean {
-  if (!firebaseDevice || firebaseDevice.status !== DeviceStatus.Online) return false;
-  const lastActive = toTimestampMs(firebaseDevice.lastActive);
-  const sensorUpdatedAt = toTimestampMs(firebaseDevice.sensors?.updatedAt);
-  const latestHeartbeat = Math.max(lastActive ?? 0, sensorUpdatedAt ?? 0);
-  return latestHeartbeat > 0 && Date.now() - latestHeartbeat <= DEVICE_ONLINE_TIMEOUT_MS;
+function mergeDeviceStatuses(devices: Device[], firebaseDevices: Record<string, any> | null): Device[] {
+  if (!firebaseDevices) return devices;
+  let changed = false;
+  const next = devices.map(device => {
+    const nextStatus = isFreshDeviceOnline(firebaseDevices[device.deviceId]) ? DeviceStatus.Online : DeviceStatus.Offline;
+    if (device.status === nextStatus) return device;
+    changed = true;
+    return { ...device, status: nextStatus };
+  });
+  return changed ? next : devices;
 }
 
 export default function DashboardScreen() {
@@ -106,7 +106,11 @@ export default function DashboardScreen() {
 
   // Sync API devices into state
   useEffect(() => {
-    setDevices(apiDevices);
+    setDevices(prev => {
+      const baseChanged = prev.length !== apiDevices.length || prev.some((device, index) => device.deviceId !== apiDevices[index]?.deviceId || device.status !== apiDevices[index]?.status);
+      if (!baseChanged) return prev;
+      return mergeDeviceStatuses(apiDevices, firebaseDevicesRef.current);
+    });
   }, [apiDevices]);
 
   // Silently refetch on focus only if data is stale (>30s old)
@@ -124,10 +128,7 @@ export default function DashboardScreen() {
     const firebaseDevices = firebaseDevicesRef.current;
     if (!firebaseDevices) return;
 
-    setDevices(prev => prev.map(device => ({
-      ...device,
-      status: isFreshDeviceOnline(firebaseDevices[device.deviceId]) ? DeviceStatus.Online : DeviceStatus.Offline,
-    })));
+    setDevices(prev => mergeDeviceStatuses(prev, firebaseDevices));
   }, []);
 
   // Subscribe to Firebase realtime device liveness
@@ -139,11 +140,9 @@ export default function DashboardScreen() {
       firebaseDevicesRef.current = snapshot.val()
       applyFirebaseDeviceStatuses()
     })
-    const interval = setInterval(applyFirebaseDeviceStatuses, 5000)
 
     return () => {
       off(statusRef)
-      clearInterval(interval)
     }
   }, [apiDevices.length, applyFirebaseDeviceStatuses])
 
@@ -163,14 +162,12 @@ export default function DashboardScreen() {
     router.push(Routes.AddDevice);
   };
 
-const AnimatedView = createAnimatedComponent(View);
-
   return (
     <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradientCompat colors={GRADIENTS.dashboard} style={styles.gradient}>
         <Header />
-        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
           <ScrollView
             style={styles.scrollView}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />}
@@ -324,7 +321,7 @@ const AnimatedView = createAnimatedComponent(View);
               ))
             )}
           </ScrollView>
-        </AnimatedView>
+        </View>
 
       </LinearGradientCompat>
     </SafeAreaViewCompat>

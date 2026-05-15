@@ -47,6 +47,37 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const setSessionsIfChanged = useCallback((next: DryingSession[]) => {
+    setSessions(prev => {
+      if (
+        prev.length === next.length &&
+        prev.every((session, index) =>
+          session._id === next[index]?._id &&
+          session.status === next[index]?.status &&
+          session.currentMoisture === next[index]?.currentMoisture &&
+          session.updatedAt === next[index]?.updatedAt
+        )
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const setActiveSessionIfChanged = useCallback((next: DryingSession | null) => {
+    setActiveSession(prev => {
+      if (
+        prev?._id === next?._id &&
+        prev?.status === next?.status &&
+        prev?.currentMoisture === next?.currentMoisture &&
+        prev?.updatedAt === next?.updatedAt
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
   const isRunning = activeSession?.status === 'active';
   const activeDeviceId = activeSession?.deviceId ?? null;
 
@@ -58,8 +89,8 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
         grainApi.sessions.list({ limit: 20 }),
         grainApi.sessions.getActive(),
       ]);
-      setSessions(sessionsRes.data);
-      setActiveSession(active);
+      setSessionsIfChanged(sessionsRes.data);
+      setActiveSessionIfChanged(active);
     } catch (err) {
       if (!isNetworkError(err)) {
         setError(err instanceof Error ? err.message : 'Failed to load sessions');
@@ -67,7 +98,7 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setActiveSessionIfChanged, setSessionsIfChanged]);
 
   // Only fetch once authenticated — prevents 401 loop on startup
   useEffect(() => {
@@ -103,14 +134,11 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
 
   const startDrying = useCallback(async (opts: StartSessionOptions): Promise<DryingSession | null> => {
     try {
+      setIsLoading(true);
       setError(null);
-      // Start the session record
-      const session = await grainApi.sessions.start({
-        deviceId: opts.deviceId,
-        grainType: opts.grainType,
-        targetMoisture: opts.targetMoisture,
-      });
-      // Fire dryer start command (best-effort — session already created)
+
+      // Queue the hardware command first. A session should not appear active
+      // unless the backend accepted the command for ESP polling.
       try {
         await grainApi.dryer.start(
           opts.deviceId,
@@ -119,11 +147,21 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
           opts.fanSpeed,
         );
       } catch (cmdErr) {
-        if (!isNetworkError(cmdErr)) {
-          console.warn('[DryingSessionContext] dryer start command failed:', cmdErr);
-        }
+        const msg = isNetworkError(cmdErr)
+          ? 'Server unavailable — start command was not queued.'
+          : (cmdErr instanceof Error ? cmdErr.message : 'Failed to queue start command');
+        console.warn('[DryingSessionContext] dryer start command failed:', cmdErr);
+        setError(msg);
+        return null;
       }
-      setActiveSession(session);
+
+      // Start the session record only after the command is accepted.
+      const session = await grainApi.sessions.start({
+        deviceId: opts.deviceId,
+        grainType: opts.grainType,
+        targetMoisture: opts.targetMoisture,
+      });
+      setActiveSessionIfChanged(session);
       setSessions(prev => [session, ...prev.filter(s => s._id !== session._id)]);
       return session;
     } catch (err) {
@@ -132,24 +170,33 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
         : (err instanceof Error ? err.message : 'Failed to start drying session');
       setError(msg);
       return null;
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [setActiveSessionIfChanged]);
 
   const stopDrying = useCallback(async (action: 'complete' | 'abort' = 'complete'): Promise<boolean> => {
     if (!activeSession) return false;
     try {
+      setIsLoading(true);
       setError(null);
-      // Fire dryer stop command (best-effort)
+
+      // Queue STOP first so the UI does not complete a session while the
+      // prototype continues running.
       try {
         await grainApi.dryer.stop(activeSession.deviceId);
       } catch (cmdErr) {
-        if (!isNetworkError(cmdErr)) {
-          console.warn('[DryingSessionContext] dryer stop command failed:', cmdErr);
-        }
+        const msg = isNetworkError(cmdErr)
+          ? 'Server unavailable — stop command was not queued.'
+          : (cmdErr instanceof Error ? cmdErr.message : 'Failed to queue stop command');
+        console.warn('[DryingSessionContext] dryer stop command failed:', cmdErr);
+        setError(msg);
+        return false;
       }
+
       // End the session record
       const updated = await grainApi.sessions.end(activeSession._id, action);
-      setActiveSession(null);
+      setActiveSessionIfChanged(null);
       setSessions(prev => prev.map(s => s._id === updated._id ? updated : s));
       return true;
     } catch (err) {
@@ -158,8 +205,10 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
         : (err instanceof Error ? err.message : 'Failed to stop drying session');
       setError(msg);
       return false;
+    } finally {
+      setIsLoading(false);
     }
-  }, [activeSession]);
+  }, [activeSession, setActiveSessionIfChanged]);
 
   const clearError = useCallback(() => setError(null), []);
 

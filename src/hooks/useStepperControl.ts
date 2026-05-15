@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { grainApi } from '@/api';
 import { useToastContext } from '@/context/ToastContext';
@@ -24,9 +24,12 @@ export function useStepperControl(deviceId: string | undefined): UseStepperContr
   const [stepperLoading, setStepperLoading] = useState(false);
   const [stepperAction, setStepperAction] = useState<StepperAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const handleStepperControl = useCallback(async (action: StepperAction) => {
     if (!deviceId) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStepperLoading(true);
     setStepperAction(action);
@@ -43,6 +46,7 @@ export function useStepperControl(deviceId: string | undefined): UseStepperContr
     } finally {
       setStepperLoading(false);
       setStepperAction(null);
+      inFlightRef.current = false;
     }
   }, [deviceId, showToast]);
 

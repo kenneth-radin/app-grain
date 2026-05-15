@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { grainApi } from '@/api';
 import { useToastContext } from '@/context/ToastContext';
@@ -20,29 +20,31 @@ export function useHeaterControl(deviceId: string | undefined): UseHeaterControl
   const [heaterStatus, setHeaterStatus] = useState<'ON' | 'OFF'>('OFF');
   const [heaterLoading, setHeaterLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const handleHeaterControl = useCallback(async (action: 'ON' | 'OFF') => {
     if (!deviceId) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const previousStatus = heaterStatus;
-    setHeaterStatus(action);
     setHeaterLoading(true);
     setError(null);
 
     try {
       await grainApi.dryer.controlHeater(deviceId, action);
+      setHeaterStatus(action);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(`Heater turned ${action.toLowerCase()}`, 'success');
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast('Failed to control heater. Try again.', 'error');
-      setHeaterStatus(previousStatus);
       setError('Failed to control heater');
     } finally {
       setHeaterLoading(false);
+      inFlightRef.current = false;
     }
-  }, [deviceId, heaterStatus, showToast]);
+  }, [deviceId, showToast]);
 
   const heaterOn = useCallback(() => handleHeaterControl('ON'), [handleHeaterControl]);
   const heaterOff = useCallback(() => handleHeaterControl('OFF'), [handleHeaterControl]);

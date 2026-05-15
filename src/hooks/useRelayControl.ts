@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { grainApi } from '@/api';
 import { useToastContext } from '@/context/ToastContext';
@@ -20,29 +20,31 @@ export function useRelayControl(deviceId: string | undefined): UseRelayControlRe
   const [relayStatus, setRelayStatus] = useState<'ON' | 'OFF'>('OFF');
   const [relayLoading, setRelayLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const handleRelayControl = useCallback(async (action: 'ON' | 'OFF') => {
     if (!deviceId) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const previousStatus = relayStatus;
-    setRelayStatus(action);
     setRelayLoading(true);
     setError(null);
 
     try {
       await grainApi.dryer.controlRelay(deviceId, action);
+      setRelayStatus(action);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(`Auger / Conveyor turned ${action.toLowerCase()}`, 'success');
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast('Failed to control auger / conveyor. Try again.', 'error');
-      setRelayStatus(previousStatus);
       setError('Failed to control relay');
     } finally {
       setRelayLoading(false);
+      inFlightRef.current = false;
     }
-  }, [deviceId, relayStatus, showToast]);
+  }, [deviceId, showToast]);
 
   const relayOn = useCallback(() => handleRelayControl('ON'), [handleRelayControl]);
   const relayOff = useCallback(() => handleRelayControl('OFF'), [handleRelayControl]);

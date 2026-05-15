@@ -65,7 +65,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const [error, setError] = useState<string | null>(null);
 
   const deviceId = selectedDevice?.deviceId;
-  const { commandAcknowledged, isOnline: deviceOnline } = useRealtimeSensor(deviceId);
+  const { commandAcknowledged, isOnline: deviceOnline, runtimeState } = useRealtimeSensor(deviceId);
 
   // Restore persisted state on mount
   useEffect(() => {
@@ -129,6 +129,21 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     }
   }, [commandAcknowledged]);
 
+  useEffect(() => {
+    if (
+      syncingUntil !== null &&
+      (runtimeState?.commandStatus === 'failed' ||
+        runtimeState?.commandStatus === 'timeout' ||
+        runtimeState?.commandStatus === 'error')
+    ) {
+      setCommandAck(false);
+      setCommandTimeout(true);
+      setSyncingUntil(null);
+      const timer = setTimeout(() => setCommandTimeout(false), DRYING.COMMAND_TIMEOUT_DISPLAY_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [runtimeState?.commandStatus, syncingUntil]);
+
   // Command timeout detection
   useEffect(() => {
     if (syncingUntil !== null) {
@@ -146,7 +161,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   }, [syncingUntil]);
 
   // Derive isRunning from shared context — true when context has an active session for this device
-  const isRunning = sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId;
+  const isRunning = Boolean(runtimeState?.isRunning || (sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId));
 
   // Apply AI action: adjust temperature/fan based on ML recommendation
   const applyAIAction = useCallback(async (prediction: AIPrediction, currentTemp: number, currentFan: number) => {
@@ -247,6 +262,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   }, [deviceId, sessionCtx, showToast]);
 
   const handleStopDryer = useCallback(() => {
+    if (isControlling || runtimeState?.pendingCommand) return;
     if (!deviceId) {
       Alert.alert('No Device', 'Please select a device first.');
       return;
@@ -279,9 +295,10 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         },
       },
     ]);
-  }, [deviceId, sessionCtx, showToast]);
+  }, [deviceId, sessionCtx, showToast, isControlling, runtimeState?.pendingCommand]);
 
   const handleStartDryer = useCallback(() => {
+    if (isControlling || runtimeState?.pendingCommand) return;
     if (!deviceId) {
       Alert.alert('No Device', 'Please select a device first.');
       return;
@@ -328,7 +345,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         },
       ],
     );
-  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast, deviceOnline]);
+  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast, deviceOnline, isControlling, runtimeState?.pendingCommand]);
 
   return {
     mode,

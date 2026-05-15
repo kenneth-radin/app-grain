@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { useLocalSearchParams } from 'expo-router';
 import { Header, StatusBadge, CommandStatusBanner, DeviceSelector, DryerModeSelector, TemperatureSlider, FanControlPanel, AIAutoStopCard } from '@/components';
 import { useDevices, useDryerControl, useFanControl, useHeaterControl, useRealtimeSensor, useRelayControl, useStepperControl } from '@/hooks';
 import { useServerStatusContext } from '@/context/ServerStatusContext';
@@ -20,9 +20,9 @@ import { DryerMode, DryerStatus } from '@/utils/enums';
 
 const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
 const LinearGradientCompat = LinearGradient as React.ComponentType<any>;
-const AnimatedView = Animated.View as React.ComponentType<any>;
 
 export default function ControlScreen() {
+  const params = useLocalSearchParams<{ deviceId?: string }>();
   const { devices, isLoading: devicesLoading } = useDevices();
   const serverCtx = useServerStatusContext();
 
@@ -31,17 +31,33 @@ export default function ControlScreen() {
   const stepper = useStepperControl(dryer.selectedDevice?.deviceId);
   const relay = useRelayControl(dryer.selectedDevice?.deviceId);
   const heater = useHeaterControl(dryer.selectedDevice?.deviceId);
-  const { sensorData } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
+  const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
 
   const deviceId = dryer.selectedDevice?.deviceId;
   const weightDisplay = sensorData?.weight ? sensorData.weight.toFixed(1) : '—';
+  const fan1Status = runtimeState?.fan1State ?? fan.fan1Status;
+  const fan2Status = runtimeState?.fan2State ?? fan.fan2Status;
+  const relayStatus = runtimeState?.relayState ?? relay.relayStatus;
+  const heaterStatus = runtimeState?.heaterState ?? heater.heaterStatus;
+  const selectedDeviceId = dryer.selectedDevice?.deviceId;
+  const setSelectedDevice = dryer.setSelectedDevice;
+
+  useEffect(() => {
+    if (!params.deviceId || devices.length === 0) return;
+    if (selectedDeviceId === params.deviceId) return;
+
+    const requestedDevice = devices.find(device => device.deviceId === params.deviceId);
+    if (requestedDevice) {
+      setSelectedDevice(requestedDevice);
+    }
+  }, [devices, params.deviceId, selectedDeviceId, setSelectedDevice]);
 
   return (
     <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <LinearGradientCompat colors={GRADIENTS.control} style={styles.gradient}>
         <Header />
-        <AnimatedView entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           <View style={styles.titleRow}>
             <View>
@@ -108,18 +124,18 @@ export default function ControlScreen() {
 
               <FanControlPanel
                 mode={dryer.mode}
-                fan1Status={fan.fan1Status}
+                fan1Status={fan1Status}
                 fan1Loading={fan.fan1Loading}
                 onFanControl={fan.controlFan}
               />
 
               <AdvancedControls
-                fan2Status={fan.fan2Status}
+                fan2Status={fan2Status}
                 fan2Loading={fan.fan2Loading || fan.bothLoading}
                 bothLoading={fan.bothLoading}
-                relayStatus={relay.relayStatus}
+                relayStatus={relayStatus}
                 relayLoading={relay.relayLoading}
-                heaterStatus={heater.heaterStatus}
+                heaterStatus={heaterStatus}
                 heaterLoading={heater.heaterLoading}
                 stepperLoading={stepper.stepperLoading}
                 stepperAction={stepper.stepperAction}
@@ -140,7 +156,7 @@ export default function ControlScreen() {
             </>
           )}
         </ScrollView>
-        </AnimatedView>
+        </View>
       </LinearGradientCompat>
     </SafeAreaViewCompat>
   );
