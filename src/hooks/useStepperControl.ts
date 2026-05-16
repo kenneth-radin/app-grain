@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { grainApi } from '@/api';
 import { useToastContext } from '@/context/ToastContext';
@@ -19,12 +19,25 @@ export type UseStepperControlReturn = StepperControlState & {
   error: string | null;
 };
 
-export function useStepperControl(deviceId: string | undefined): UseStepperControlReturn {
+export function useStepperControl(
+  deviceId: string | undefined,
+  setSyncingUntil?: (ms: number | null) => void,
+  commandAck = false,
+  commandTimeout = false,
+): UseStepperControlReturn {
   const { showToast } = useToastContext();
   const [stepperLoading, setStepperLoading] = useState(false);
   const [stepperAction, setStepperAction] = useState<StepperAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (commandAck || commandTimeout) {
+      setStepperLoading(false);
+      setStepperAction(null);
+      inFlightRef.current = false;
+    }
+  }, [commandAck, commandTimeout]);
 
   const handleStepperControl = useCallback(async (action: StepperAction) => {
     if (!deviceId) return;
@@ -34,21 +47,22 @@ export function useStepperControl(deviceId: string | undefined): UseStepperContr
     setStepperLoading(true);
     setStepperAction(action);
     setError(null);
+    setSyncingUntil?.(Date.now() + 15000);
 
     try {
       await grainApi.dryer.controlStepper(deviceId, action);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast(`Stepper ${action.toLowerCase()} command sent`, 'success');
     } catch {
+      setStepperLoading(false);
+      setStepperAction(null);
+      setSyncingUntil?.(null);
+      inFlightRef.current = false;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast('Failed to control stepper. Try again.', 'error');
       setError('Failed to control stepper');
-    } finally {
-      setStepperLoading(false);
-      setStepperAction(null);
-      inFlightRef.current = false;
     }
-  }, [deviceId, showToast]);
+  }, [deviceId, setSyncingUntil, showToast]);
 
   const stepperStart = useCallback(() => handleStepperControl('START'), [handleStepperControl]);
   const stepperStop = useCallback(() => handleStepperControl('STOP'), [handleStepperControl]);

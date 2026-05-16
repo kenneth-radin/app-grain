@@ -62,6 +62,7 @@ export enum StorageKeys {
 
 export enum ApiTimeout {
   Default = 30000,
-  Startup = 30000,
-  HealthCheck = 5000,
+  Startup = 45000,
+  HealthCheck = 10000,
+  Warmup = 45000,
 }

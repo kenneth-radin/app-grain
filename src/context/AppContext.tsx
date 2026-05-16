@@ -71,3 +71,4 @@ export function useHandleLogout() {
 
 // ─── Backward-compatible re-exports ───────────────────────
 export { useDeviceContext, useAlertContext, useToastContext, useServerStatusContext };
+export { useDryingSession } from './DryingSessionContext';

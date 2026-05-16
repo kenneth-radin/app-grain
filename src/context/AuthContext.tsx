@@ -109,6 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (state.isReconnecting) {
       reconnectTimerRef.current = setInterval(async () => {
         try {
+          await grainApi.health.warmup();
           const user = await grainApi.auth.me(RESTORE_AUTH_TIMEOUT);
           try {
             const profile = await grainApi.profile.get();
@@ -146,6 +147,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: 'AUTH_LOGOUT' });
         return;
       }
+
+      // Wake Render before the first authenticated request. This is intentionally silent:
+      // cold-start failures fall through to the existing startup retry loop.
+      await grainApi.health.warmup();
 
       // Try up to STARTUP_RETRIES times with backoff before giving up
       let lastError: unknown = null;

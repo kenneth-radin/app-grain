@@ -63,6 +63,18 @@ export interface SensorData {
   timestamp: string
 }
 
+export interface SensorDataInput {
+  deviceId: string
+  temperature: number
+  humidity: number
+  moisture: number
+  fanSpeed?: number
+  energy?: number
+  status?: string
+  solarVoltage?: number
+  weight?: number
+}
+
 export interface AlertItem {
   _id: string
   deviceId?: string
@@ -143,6 +155,8 @@ export interface DryingSession {
   completedAt?: string
   duration?: number
   efficiency?: number
+  isSimulated?: boolean
+  simulationTag?: string
   createdAt: string
   updatedAt: string
 }
@@ -273,6 +287,50 @@ class GrainApiClient {
     return typeof (error as { status?: unknown }).status === 'number'
       ? (error as { status: number }).status
       : undefined
+  }
+
+  private getErrorCode(error: unknown): string | undefined {
+    return typeof (error as { code?: unknown }).code === 'string'
+      ? (error as { code: string }).code
+      : undefined
+  }
+
+  private isColdStartRetryable(error: unknown): boolean {
+    const status = this.getErrorStatus(error)
+    const code = this.getErrorCode(error)
+    return (
+      !status ||
+      status === 0 ||
+      status === 502 ||
+      status === 503 ||
+      code === 'NETWORK_ERROR' ||
+      code === 'ECONNABORTED'
+    )
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  private async withColdStartRetry<T>(
+    operation: () => Promise<T>,
+    options: { retries?: number; initialDelayMs?: number } = {}
+  ): Promise<T> {
+    const retries = options.retries ?? 3
+    const initialDelayMs = options.initialDelayMs ?? 5000
+
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        if (attempt >= retries || !this.isColdStartRetryable(error)) {
+          throw error
+        }
+        await this.sleep(initialDelayMs * Math.pow(2, attempt))
+      }
+    }
+
+    throw new Error('Retry failed')
   }
 
   private async sendCommandViaDryerEndpoint(deviceId: string, command: string): Promise<Command> {
@@ -471,6 +529,17 @@ class GrainApiClient {
     getLatestData: async (deviceId: string): Promise<SensorData | null> => {
       const result = await this.sensors.getData(deviceId, { limit: 1 })
       return result.data[0] || null
+    },
+
+    submitData: async (payload: SensorDataInput): Promise<{ accepted: boolean }> => {
+      return this.withColdStartRetry(async () => {
+        const response = await this.client.post<ApiResponse<{ accepted: boolean }>>(
+          '/sensors/data',
+          payload,
+          { timeout: ApiTimeout.Warmup }
+        )
+        return response.data.data ?? { accepted: response.status === 202 || response.status === 201 }
+      })
     },
   }
 
@@ -764,6 +833,17 @@ class GrainApiClient {
   // ─── Health ───────────────────────────────────────────────
 
   health = {
+    warmup: async (): Promise<boolean> => {
+      try {
+        const response = await this.client.get('/warmup', {
+          timeout: ApiTimeout.Warmup,
+        })
+        return response.status === 200
+      } catch {
+        return false
+      }
+    },
+
     check: async (timeoutMs?: number): Promise<boolean> => {
       try {
         const response = await this.client.get('/health', {

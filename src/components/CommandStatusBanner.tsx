@@ -7,6 +7,7 @@ interface CommandStatusBannerProps {
   commandAck: boolean;
   commandTimeout: boolean;
   syncingUntil: number | null;
+  commandStatus?: 'idle' | 'pending' | 'polled' | 'executing' | 'executed' | 'failed' | 'timeout' | 'error';
   isServerOnline: boolean;
   queuedCommandCount: number;
 }
@@ -15,26 +16,35 @@ export function CommandStatusBanner({
   commandAck,
   commandTimeout,
   syncingUntil,
+  commandStatus,
   isServerOnline,
   queuedCommandCount,
 }: CommandStatusBannerProps) {
+  const isSending = syncingUntil !== null && Date.now() < syncingUntil;
+  const isSentToDevice = isSending && (commandStatus === 'polled' || commandStatus === 'executing');
+
   return (
     <>
       {/* Command Acknowledgement Banner */}
       {commandAck ? (
         <View style={styles.syncBanner}>
           <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />
-          <Text style={styles.syncBannerText}>Command received by device</Text>
+          <Text style={styles.syncBannerText}>Confirmed</Text>
         </View>
       ) : commandTimeout ? (
         <View style={[styles.syncBanner, styles.timeoutBanner]}>
           <Ionicons name="alert-circle-outline" size={18} color={COLORS.danger} />
-          <Text style={[styles.syncBannerText, { color: COLORS.danger }]}>Command timed out. Queue unlocked.</Text>
+          <Text style={[styles.syncBannerText, { color: COLORS.danger }]}>Timeout — retry?</Text>
         </View>
-      ) : syncingUntil !== null && Date.now() < syncingUntil ? (
+      ) : isSentToDevice ? (
+        <View style={styles.syncBanner}>
+          <Ionicons name="radio-outline" size={18} color={COLORS.primary} />
+          <Text style={styles.syncBannerText}>Sent to device</Text>
+        </View>
+      ) : isSending ? (
         <View style={styles.syncBanner}>
           <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.syncBannerText}>Sending command to prototype...</Text>
+          <Text style={styles.syncBannerText}>Sending...</Text>
         </View>
       ) : null}
 

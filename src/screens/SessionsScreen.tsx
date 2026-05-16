@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,9 +56,18 @@ function SessionStatusBadge({ status }: { status: string }) {
   );
 }
 
+function SimulationBadge() {
+  return (
+    <View style={styles.simulationBadge}>
+      <Ionicons name="flask-outline" size={11} color="#166534" />
+      <Text style={styles.simulationBadgeText}>Demo</Text>
+    </View>
+  );
+}
+
 export default function SessionsScreen() {
   const { devices } = useDevices();
-  const { sessions, activeSession, isLoading, error, refetch, startDrying, stopDrying } = useDryingSession();
+  const { sessions, activeSession, isLoading, error, refetch, startDrying, stopDrying, getLastError } = useDryingSession();
   const { showToast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
@@ -80,6 +90,12 @@ export default function SessionsScreen() {
   const { prediction: aiPrediction } = useAIPrediction(aiSensorInput, {
     pollInterval: activeSession ? 30000 : 0,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -106,10 +122,11 @@ export default function SessionsScreen() {
     const result = await startDrying({ deviceId: selectedDeviceId, grainType: selectedGrain, targetMoisture });
     setStarting(false);
     if (result) {
+      await refetch();
       showToast('Drying session started!', 'success');
       setShowStartModal(false);
     } else {
-      showToast('Failed to start session', 'error');
+      showToast(getLastError() || error || 'Failed to start session', 'error');
     }
   };
 
@@ -235,7 +252,12 @@ export default function SessionsScreen() {
           )}
 
           {/* Session History */}
-          <Text style={styles.sectionTitle}>History</Text>
+          <View style={styles.historyTitleRow}>
+            <Text style={styles.sectionTitle}>History</Text>
+            {sessions.some(session => session.isSimulated) && (
+              <Text style={styles.historyHint}>Includes seeded drying runs</Text>
+            )}
+          </View>
           {error ? (
             <View style={styles.errorBanner}>
               <Ionicons name="cloud-offline-outline" size={18} color="#991B1B" />
@@ -258,7 +280,10 @@ export default function SessionsScreen() {
               <View key={session._id} style={styles.historyCard}>
                 <View style={styles.historyHeader}>
                   <View>
-                    <Text style={styles.historyDevice}>{session.deviceId}</Text>
+                    <View style={styles.historyDeviceRow}>
+                      <Text style={styles.historyDevice}>{session.deviceId}</Text>
+                      {session.isSimulated && <SimulationBadge />}
+                    </View>
                     <Text style={styles.historyTime}>{formatTimeAgo(session.startedAt)}</Text>
                   </View>
                   <SessionStatusBadge status={session.status} />
@@ -414,13 +439,18 @@ const styles = StyleSheet.create({
   abortBtnText: { fontSize: 13, fontWeight: '600', color: '#991B1B' },
 
   // History
-  sectionTitle: { ...IOS_TYPOGRAPHY.title3, color: '#111', marginBottom: 12 },
+  historyTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle: { ...IOS_TYPOGRAPHY.title3, color: '#111' },
+  historyHint: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600' },
   historyCard: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  historyDeviceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   historyDevice: { fontSize: 14, fontWeight: '600', color: '#111' },
   historyTime: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   historyMetrics: { flexDirection: 'row', gap: 12 },
   historyMetric: { fontSize: 12, color: COLORS.textSecondary },
+  simulationBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#DCFCE7', borderRadius: 20, paddingHorizontal: 6, paddingVertical: 2 },
+  simulationBadgeText: { fontSize: 10, fontWeight: '700', color: '#166534' },
 
   // Empty state
   emptyState: { alignItems: 'center', paddingVertical: 40 },

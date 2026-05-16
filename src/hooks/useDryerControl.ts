@@ -59,6 +59,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const [syncingUntil, setSyncingUntil] = useState<number | null>(null);
   const [commandAck, setCommandAck] = useState(false);
   const [commandTimeout, setCommandTimeout] = useState(false);
+  const [optimisticRunning, setOptimisticRunning] = useState<boolean | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
@@ -124,10 +125,11 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
       setCommandAck(true);
       setCommandTimeout(false);
       setSyncingUntil(null);
+      setOptimisticRunning(null);
       const timer = setTimeout(() => setCommandAck(false), DRYING.COMMAND_ACK_DISPLAY_MS);
       return () => clearTimeout(timer);
     }
-  }, [commandAcknowledged]);
+  }, [commandAcknowledged, syncingUntil]);
 
   useEffect(() => {
     if (
@@ -139,6 +141,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
       setCommandAck(false);
       setCommandTimeout(true);
       setSyncingUntil(null);
+      setOptimisticRunning(null);
       const timer = setTimeout(() => setCommandTimeout(false), DRYING.COMMAND_TIMEOUT_DISPLAY_MS);
       return () => clearTimeout(timer);
     }
@@ -148,20 +151,28 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   useEffect(() => {
     if (syncingUntil !== null) {
       const remaining = syncingUntil - Date.now();
-      const timeoutMs = Math.max(remaining, DRYING.COMMAND_ACK_TIMEOUT_MS);
+      const timeoutMs = Math.max(0, remaining);
       const timer = setTimeout(() => {
         if (!commandAck) {
           setCommandTimeout(true);
           setSyncingUntil(null);
+          setOptimisticRunning(null);
           setTimeout(() => setCommandTimeout(false), DRYING.COMMAND_TIMEOUT_DISPLAY_MS);
         }
       }, timeoutMs);
       return () => clearTimeout(timer);
     }
-  }, [syncingUntil]);
+  }, [commandAck, syncingUntil]);
 
   // Derive isRunning from shared context — true when context has an active session for this device
-  const isRunning = Boolean(runtimeState?.isRunning || (sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId));
+  const actualRunning = Boolean(runtimeState?.isRunning || (sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId));
+  const isRunning = optimisticRunning ?? actualRunning;
+
+  useEffect(() => {
+    if (optimisticRunning !== null && runtimeState?.isRunning === optimisticRunning) {
+      setOptimisticRunning(null);
+    }
+  }, [optimisticRunning, runtimeState?.isRunning]);
 
   // Apply AI action: adjust temperature/fan based on ML recommendation
   const applyAIAction = useCallback(async (prediction: AIPrediction, currentTemp: number, currentFan: number) => {
@@ -275,6 +286,9 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           setIsControlling(true);
+          setCommandAck(false);
+          setCommandTimeout(false);
+          setOptimisticRunning(false);
           setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
           try {
             const ok = await sessionCtx.stopDrying('complete');
@@ -283,9 +297,11 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
             } else {
               const msg = sessionCtx.error || 'Failed to stop dryer';
               if (isNetworkError({ status: 0 })) {
+                setOptimisticRunning(null);
                 await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
                 showToast('Offline — stop command queued', 'warning');
               } else {
+                setOptimisticRunning(null);
                 showToast(msg, 'error');
               }
             }
@@ -319,7 +335,10 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setIsControlling(true);
+            setCommandAck(false);
+            setCommandTimeout(false);
             setAiAutoStopped(false);
+            setOptimisticRunning(true);
             setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
             try {
               const session = await sessionCtx.startDrying({
@@ -330,11 +349,13 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
                 showToast('Dryer started successfully', 'success');
               } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                const msg = sessionCtx.error || 'Failed to start dryer';
+                const msg = sessionCtx.getLastError() || sessionCtx.error || 'Failed to start dryer';
                 if (msg.toLowerCase().includes('unavailable') || msg.toLowerCase().includes('connection')) {
+                  setOptimisticRunning(null);
                   await enqueueCommand({ id: `${Date.now()}-start`, deviceId, type: 'start', payload: { mode, temperature, fanSpeed }, queuedAt: Date.now() });
                   showToast('Offline — start command queued', 'warning');
                 } else {
+                  setOptimisticRunning(null);
                   showToast(msg, 'error');
                 }
               }

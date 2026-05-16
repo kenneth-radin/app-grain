@@ -32,7 +32,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const router = useRouter();
   const { showToast } = useToast();
   const { device, isLoading: deviceLoading, error: deviceError, refetch: deviceRefetch } = useDevice(deviceId);
-  const { sensorData: rtData, isOnline: rtOnline, isFallbackMode, lastUpdated, remoteCommand } = useRealtimeSensor(device?.deviceId);
+  const { sensorData: rtData, isOnline: rtOnline, isFallbackMode, lastUpdated, remoteCommand, runtimeState } = useRealtimeSensor(device?.deviceId);
 
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
 
@@ -57,7 +57,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       const timer = setTimeout(() => setCommandStatus(null), 10000);
       return () => clearTimeout(timer);
     }
-  }, [remoteCommand]);
+  }, [remoteCommand, showToast]);
   const { latestData: polledData, stalenessReason: polledStaleness } = useSensorData(device?.deviceId, isFallbackMode);
   const [isControlling, setIsControlling] = useState(false);
 
@@ -66,7 +66,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
       if (deviceId) {
         deviceRefetch();
       }
-    }, [deviceId])
+    }, [deviceId, deviceRefetch])
   );
 
   const liveData = rtOnline ? (rtData || polledData) : (isFallbackMode ? polledData : null);
@@ -248,7 +248,19 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
             <DryingAlertBanner severity={dryingAlert.severity} message={dryingAlert.message} action={dryingAlert.action} />
           )}
 
-          <GrainDryingSimulation moisture={moisture} temperature={temp} isRunning={isRunning} targetMoisture={targetM} />
+          <GrainDryingSimulation
+            moisture={moisture}
+            temperature={temp}
+            humidity={humidity}
+            fanSpeed={fanSpeed}
+            isRunning={isRunning}
+            fan1State={runtimeState?.fan1State}
+            fan2State={runtimeState?.fan2State}
+            heaterState={runtimeState?.heaterState}
+            stepperState={runtimeState?.stepperState}
+            relayState={runtimeState?.relayState}
+            targetMoisture={targetM}
+          />
 
           {/* Stale Data Warning — distinguish server offline vs sensor not sending */}
           {(isStale && lastUpdated) || isServerUnreachable ? (

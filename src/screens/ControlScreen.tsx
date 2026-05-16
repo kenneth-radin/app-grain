@@ -27,10 +27,31 @@ export default function ControlScreen() {
   const serverCtx = useServerStatusContext();
 
   const dryer = useDryerControl(devices, devicesLoading);
-  const fan = useFanControl(dryer.selectedDevice?.deviceId, dryer.syncingUntil, dryer.setSyncingUntil);
-  const stepper = useStepperControl(dryer.selectedDevice?.deviceId);
-  const relay = useRelayControl(dryer.selectedDevice?.deviceId);
-  const heater = useHeaterControl(dryer.selectedDevice?.deviceId);
+  const fan = useFanControl(
+    dryer.selectedDevice?.deviceId,
+    dryer.syncingUntil,
+    dryer.setSyncingUntil,
+    dryer.commandAck,
+    dryer.commandTimeout,
+  );
+  const stepper = useStepperControl(
+    dryer.selectedDevice?.deviceId,
+    dryer.setSyncingUntil,
+    dryer.commandAck,
+    dryer.commandTimeout,
+  );
+  const relay = useRelayControl(
+    dryer.selectedDevice?.deviceId,
+    dryer.setSyncingUntil,
+    dryer.commandAck,
+    dryer.commandTimeout,
+  );
+  const heater = useHeaterControl(
+    dryer.selectedDevice?.deviceId,
+    dryer.setSyncingUntil,
+    dryer.commandAck,
+    dryer.commandTimeout,
+  );
   const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
 
   const deviceId = dryer.selectedDevice?.deviceId;
@@ -71,6 +92,7 @@ export default function ControlScreen() {
             commandAck={dryer.commandAck}
             commandTimeout={dryer.commandTimeout}
             syncingUntil={dryer.syncingUntil}
+            commandStatus={runtimeState?.commandStatus}
             isServerOnline={serverCtx.isServerOnline}
             queuedCommandCount={serverCtx.queuedCommandCount}
           />
