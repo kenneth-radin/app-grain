@@ -5,7 +5,7 @@ import { ServerStatusBanner, ErrorBoundary, Navigation, AssistantFAB, AssistantM
 import { LoadingScreen } from '@/components/LoadingScreen';
 
 // Screens that should NOT show the bottom nav bar or FAB
-const NO_NAV_PATHS = ['/device/', '/add-device'];
+const NO_NAV_PATHS = ['/device/', '/add-device', '/ai-chatbot'];
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();

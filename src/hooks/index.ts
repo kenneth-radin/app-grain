@@ -18,3 +18,4 @@ export { useLogout } from './useLogout';
 export { usePushNotifications } from './usePushNotifications';
 export { useDryingSessions } from './useDryingSessions';
 export { useNotifications } from './useNotifications';
+export { useSessionPredictions } from './useSessionPredictions';

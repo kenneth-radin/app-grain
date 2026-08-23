@@ -29,3 +29,4 @@ export { FanControlPanel } from './FanControlPanel';
 export { DryingAlertBanner } from './DryingAlertBanner';
 export { PasswordInput } from './PasswordInput';
 export { FilterPills } from './FilterPills';
+export { default as PredictionCard } from './PredictionCard';

@@ -10,8 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -19,6 +19,9 @@ import { useRouter } from 'expo-router';
 import { COLORS } from '@/utils/constants';
 
 type Language = 'en' | 'fil';
+
+// Type-safe wrapper (matches DeviceDetailScreen pattern for safe-area-context typings)
+const SafeAreaViewCompat = SafeAreaView as React.ComponentType<any>;
 
 interface Message {
   id: string;
@@ -229,7 +232,7 @@ export default function AIChatbotScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
 
       {/* ── Header ── */}
@@ -265,7 +268,7 @@ export default function AIChatbotScreen() {
       {/* ── Chat area + input ── */}
       <KeyboardAvoidingView
         style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         {/* Messages list */}
@@ -358,7 +361,7 @@ export default function AIChatbotScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SafeAreaViewCompat>
   );
 }
 

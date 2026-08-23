@@ -359,7 +359,7 @@ export default function GrainDryingSimulation({
 
 const styles = StyleSheet.create({
   container: {
-    height: PANEL_HEIGHT,
+    minHeight: PANEL_HEIGHT,
     width: '100%',
     backgroundColor: '#111827',
     borderRadius: 16,

@@ -133,6 +133,45 @@ export interface NotificationItem {
   createdAt: string
 }
 
+// ─── AI Prediction (matching backend models/Prediction.ts) ─────
+
+export type PredictionStatus = 'in_progress' | 'approaching_completion' | 'estimated_complete'
+
+export type PredictionRecommendation =
+  | 'CONTINUE_DRYING'
+  | 'REDUCE_HEATING'
+  | 'INCREASE_AIRFLOW'
+  | 'APPROACHING_COMPLETION'
+  | 'ESTIMATED_COMPLETE'
+
+export interface Prediction {
+  _id: string
+  sessionId: string
+  deviceId: string
+  /** Minutes elapsed between session start and this prediction. */
+  elapsedMinutes: number
+  temperature: number
+  humidity: number
+  /** Current exhaust RH minus the equilibrium-RH completion threshold (pp). */
+  rhGapToEquilibrium?: number
+  /** Model output: estimated minutes left until the end condition is met. */
+  remainingMinutes: number
+  /** Wall-clock time when drying is predicted to reach the end condition. */
+  estimatedCompletionAt: string
+  status: PredictionStatus
+  recommendation: PredictionRecommendation
+  /** Which predictor produced this: trained model or physics fallback. */
+  source: 'ml_model' | 'physics_fallback'
+  modelVersion?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PredictionsResponse {
+  latest: Prediction | null
+  history: Prediction[]
+}
+
 export interface PaginatedResponse<T> {
   data: T[]
   pagination: {
@@ -771,6 +810,48 @@ class GrainApiClient {
         this.client.post('/push/token', { pushToken }),
         this.notifications.registerFCMToken(pushToken, 'android'),
       ])
+    },
+  }
+
+  // ─── AI Predictions ────────────────────────────────────────
+
+  predictions = {
+    /**
+     * Latest AI drying prediction for a session (+ optional history).
+     * Backend: GET /api/predictions/:sessionId?history=true&limit=20
+     */
+    getForSession: async (
+      sessionId: string,
+      params?: { history?: boolean; limit?: number }
+    ): Promise<PredictionsResponse> => {
+      const queryParams: any = {}
+      if (params?.history) queryParams.history = 'true'
+      if (params?.limit) queryParams.limit = String(params.limit)
+
+      const response = await this.client.get<ApiResponse<PredictionsResponse>>(
+        `/predictions/${sessionId}`,
+        { params: queryParams }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid predictions response')
+    },
+
+    /**
+     * Convenience wrapper: resolves the device's active session, then fetches
+     * its latest prediction. Returns nulls when no session is active.
+     */
+    getForDevice: async (
+      deviceId: string,
+      params?: { history?: boolean; limit?: number }
+    ): Promise<PredictionsResponse & { hasActiveSession: boolean }> => {
+      const session = await this.sessions.getActive(deviceId)
+      if (!session) {
+        return { latest: null, history: [], hasActiveSession: false }
+      }
+      const data = await this.predictions.getForSession(session._id, params)
+      return { ...data, hasActiveSession: true }
     },
   }
 

@@ -1,2 +1,2 @@
 export { grainApi, GrainApiClient, isNetworkError } from './grain-api-client';
-export type { User, SensorData, SensorDataInput, AlertItem, Device, Command, AnalyticsOverview, PaginatedResponse, ApiResponse, DryingSession, NotificationItem } from './grain-api-client';
+export type { User, SensorData, SensorDataInput, AlertItem, Device, Command, AnalyticsOverview, PaginatedResponse, ApiResponse, DryingSession, NotificationItem, Prediction, PredictionsResponse, PredictionStatus, PredictionRecommendation } from './grain-api-client';

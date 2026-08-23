@@ -9,8 +9,8 @@ import * as Haptics from 'expo-haptics';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useDevice, useRealtimeSensor, useSensorData } from '@/hooks';
-import { StatusBadge, Header, GrainDryingSimulation, DryingAlertBanner } from '@/components';
+import { useDevice, useRealtimeSensor, useSensorData, useSessionPredictions } from '@/hooks';
+import { StatusBadge, Header, GrainDryingSimulation, DryingAlertBanner, PredictionCard } from '@/components';
 import { grainApi, isNetworkError } from '@/api';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, DRYING } from '@/utils/constants';
@@ -59,6 +59,7 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
     }
   }, [remoteCommand, showToast]);
   const { latestData: polledData, stalenessReason: polledStaleness } = useSensorData(device?.deviceId, isFallbackMode);
+  const { prediction: aiPrediction, hasActiveSession } = useSessionPredictions(device?.deviceId);
   const [isControlling, setIsControlling] = useState(false);
 
   useFocusEffect(
@@ -282,6 +283,9 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
             <View style={s.halfCard}><Text style={s.cardLbl}>STATUS</Text><Text style={isRunning ? s.cardValGreen : s.cardVal}>{isRunning ? 'Running' : 'Idle'}</Text><Text style={s.cardSub}>{isOnline ? 'Connected to ESP32' : 'Device offline'}</Text></View>
             <View style={s.halfCard}><Text style={s.cardLbl}>HUMIDITY</Text><Text style={s.cardVal}>{humidity} %</Text><Text style={s.cardSub}>Ambient RH</Text></View>
           </View>
+
+          {/* AI Prediction — shown only while a drying session is active */}
+          {hasActiveSession && <PredictionCard prediction={aiPrediction} />}
 
           <TouchableOpacity style={s.aiInsightsBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIChatbot); }} activeOpacity={0.7}>
             <Ionicons name="sparkles" size={18} color="#22C55E" />
