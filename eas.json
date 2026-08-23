@@ -8,18 +8,19 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://grain-web-admin.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
       }
     },
     "preview": {
       "distribution": "internal",
+      "buildType": "apk",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://grain-web-admin.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://grain-web-admin.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
       }
     }
   }

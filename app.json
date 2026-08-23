@@ -12,6 +12,7 @@
       "icon": "./assets/icon.png"
     },
     "android": {
+      "package": "com.sdca.grain",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
