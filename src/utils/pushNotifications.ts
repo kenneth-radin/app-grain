@@ -1,6 +1,6 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { DryingAlert } from './dryingAlerts';
+import { getNotificationsClient } from './notificationsClient';
 
 /**
  * Schedule a local push notification for a drying alert.
@@ -11,6 +11,10 @@ export async function triggerDryingAlertNotification(
   deviceId?: string,
 ): Promise<string | undefined> {
   if (Platform.OS === 'web') return undefined;
+
+  const Notifications = getNotificationsClient();
+  // expo-notifications is not loaded in Expo Go on Android (SDK 53+) — skip quietly.
+  if (!Notifications) return undefined;
 
   // Only notify for non-normal alerts
   if (alert.type === 'normal') return undefined;
