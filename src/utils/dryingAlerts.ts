@@ -1,50 +1,48 @@
 import { SensorThreshold } from '@/utils/enums';
 
+// DHT22 only — drying alerts are based on temperature and humidity.
 export interface DryingAlert {
-  type: 'over_drying' | 'under_drying' | 'complete' | 'normal';
+  type: 'overheating' | 'high_humidity' | 'normal';
   severity: 'info' | 'warning' | 'critical';
   message: string;
   action: string;
 }
 
-const TARGET_MOISTURE = SensorThreshold.MoistureTarget;
-
 export function analyzeDryingStatus(
-  currentMoisture: number,
-  targetMoisture: number = TARGET_MOISTURE,
   temperature: number,
+  humidity: number,
 ): DryingAlert {
-  if (currentMoisture < SensorThreshold.MoistureMin) {
-    return {
-      type: 'over_drying',
-      severity: 'critical',
-      message: 'OVER-DRYING DETECTED: Grain moisture below 10%',
-      action: 'Stop dryer immediately to prevent grain cracking',
-    };
-  }
-
-  if (currentMoisture <= targetMoisture && currentMoisture >= SensorThreshold.MoistureMin) {
-    return {
-      type: 'complete',
-      severity: 'info',
-      message: 'Drying complete! Safe storage moisture achieved',
-      action: 'Stop dryer and transfer grains to storage',
-    };
-  }
-
   if (temperature > SensorThreshold.HighTempRisk) {
     return {
-      type: 'over_drying',
+      type: 'overheating',
+      severity: 'critical',
+      message: `OVERHEATING DETECTED: ${Math.round(temperature)}°C exceeds safe limit`,
+      action: 'Stop dryer immediately to prevent grain damage',
+    };
+  }
+
+  if (temperature > SensorThreshold.TempDanger) {
+    return {
+      type: 'overheating',
       severity: 'warning',
       message: 'High temperature risk — grain cracking possible',
-      action: 'Reduce temperature or increase fan speed',
+      action: 'Reduce heater temperature or increase fan speed',
+    };
+  }
+
+  if (humidity > SensorThreshold.HumidityDanger) {
+    return {
+      type: 'high_humidity',
+      severity: 'warning',
+      message: `High ambient humidity (${Math.round(humidity)}%) — drying is inefficient`,
+      action: 'Continue drying or increase fan speed to remove moist air',
     };
   }
 
   return {
     type: 'normal',
     severity: 'info',
-    message: `Continue drying — current moisture: ${currentMoisture}%`,
-    action: `Target: ${targetMoisture}% for safe storage`,
+    message: `Drying conditions normal — ${Math.round(temperature)}°C, ${Math.round(humidity)}% RH`,
+    action: 'Monitor temperature and humidity until drying completes',
   };
 }

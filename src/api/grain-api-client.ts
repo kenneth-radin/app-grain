@@ -1,6 +1,7 @@
 /**
  * grAIn Mobile App - API Client Library
  * Backend endpoints matching the grAIn IoT Grain Dryer API
+ * DHT22 is the only sensor — temperature and humidity only.
  */
 
 import axios, { AxiosInstance } from 'axios'
@@ -45,20 +46,15 @@ export interface Device {
     lastHeartbeat?: string
     currentTemperature?: number
     currentHumidity?: number
-    currentMoisture?: number
-    currentWeight?: number
   }
 }
 
+// DHT22 sensor data — temperature and humidity only.
 export interface SensorData {
   _id: string
   deviceId: string
   temperature: number
   humidity: number
-  moisture: number
-  fanSpeed: number
-  energy: number
-  weight?: number
   status: string
   timestamp: string
 }
@@ -67,12 +63,7 @@ export interface SensorDataInput {
   deviceId: string
   temperature: number
   humidity: number
-  moisture: number
-  fanSpeed?: number
-  energy?: number
   status?: string
-  solarVoltage?: number
-  weight?: number
 }
 
 export interface AlertItem {
@@ -105,33 +96,9 @@ export interface Command {
 }
 
 export interface AnalyticsOverview {
-  moistureTrend: { label: string; value: number }[]
+  temperatureTrend?: { label: string; value: number }[]
+  humidityTrend?: { label: string; value: number }[]
   dryingCycles: { label: string; value: number }[]
-  energyConsumption: { label: string; value: number }[]
-}
-
-export interface AIPrediction {
-  predictedMoisture30min: number
-  estimatedMinutesToTarget: number
-  recommendation: string
-  recommendationType: 'optimal' | 'warning' | 'critical'
-  action: 'STOP' | 'REDUCE_TEMP' | 'INCREASE_TEMP' | 'INCREASE_FAN' | 'MAINTAIN'
-  efficiencyScore: number
-  confidence: number
-  isDryingComplete: boolean
-  projectedCurve: { time: number; moisture: number }[]
-  targetMoisture: number
-  algorithm: string
-}
-
-export interface SensorInput {
-  deviceId: string
-  temperature: number
-  humidity: number
-  moisture: number
-  fanSpeed: number
-  timeElapsed: number
-  solarVoltage?: number
 }
 
 export interface DryingSession {
@@ -140,16 +107,8 @@ export interface DryingSession {
   userId: string
   status: 'active' | 'completed' | 'aborted'
   grainType: string
-  startMoisture: number
-  targetMoisture: number
-  currentMoisture: number
-  finalMoisture?: number
-  startWeight: number
-  finalWeight?: number
-  totalEnergyUsed: number
   avgTemperature: number
   avgHumidity: number
-  avgFanSpeed: number
   dataPoints: number
   startedAt: string
   completedAt?: string
@@ -493,7 +452,7 @@ class GrainApiClient {
     },
   }
 
-  // ─── Sensors ──────────────────────────────────────────────
+  // ─── Sensors (DHT22 only) ─────────────────────────────────
 
   sensors = {
     getData: async (
@@ -662,21 +621,6 @@ class GrainApiClient {
     },
   }
 
-  // ─── AI ────────────────────────────────────────────────────
-
-  ai = {
-    predict: async (params: SensorInput): Promise<AIPrediction> => {
-      const response = await this.client.post<ApiResponse<AIPrediction>>(
-        '/ai/predict',
-        params,
-      )
-      if (response.data.data) {
-        return response.data.data
-      }
-      throw new Error('Invalid AI prediction response')
-    },
-  }
-
   // ─── Profile ────────────────────────────────────────────────
 
   profile = {
@@ -747,7 +691,7 @@ class GrainApiClient {
       throw new Error('Invalid session response')
     },
 
-    start: async (payload: { deviceId: string; grainType?: string; targetMoisture?: number }): Promise<DryingSession> => {
+    start: async (payload: { deviceId: string; grainType?: string }): Promise<DryingSession> => {
       const response = await this.client.post<ApiResponse<DryingSession>>('/sessions', payload)
       if (response.data.data) {
         return response.data.data

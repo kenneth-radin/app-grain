@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Header } from '@/components';
 import { useDevices } from '@/hooks';
-import { useAIPrediction } from '@/hooks/useAIPrediction';
 import { useDryingSession } from '@/context/DryingSessionContext';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, COLORS } from '@/utils/constants';
@@ -73,23 +72,7 @@ export default function SessionsScreen() {
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [selectedGrain, setSelectedGrain] = useState('rice');
-  const [targetMoisture, setTargetMoisture] = useState(14);
   const [starting, setStarting] = useState(false);
-
-  // AI prediction for the active session's device
-  const aiSensorInput = activeSession ? {
-    deviceId: activeSession.deviceId,
-    temperature: activeSession.avgTemperature ?? 45,
-    humidity: activeSession.avgHumidity ?? 50,
-    moisture: activeSession.currentMoisture ?? 20,
-    fanSpeed: activeSession.avgFanSpeed ?? 70,
-    timeElapsed: activeSession.startedAt
-      ? Math.round((Date.now() - new Date(activeSession.startedAt).getTime()) / 60000)
-      : 0,
-  } : null;
-  const { prediction: aiPrediction } = useAIPrediction(aiSensorInput, {
-    pollInterval: activeSession ? 30000 : 0,
-  });
 
   useFocusEffect(
     useCallback(() => {
@@ -119,7 +102,7 @@ export default function SessionsScreen() {
     }
     setStarting(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const result = await startDrying({ deviceId: selectedDeviceId, grainType: selectedGrain, targetMoisture });
+    const result = await startDrying({ deviceId: selectedDeviceId, grainType: selectedGrain });
     setStarting(false);
     if (result) {
       await refetch();
@@ -139,10 +122,6 @@ export default function SessionsScreen() {
       showToast('Failed to end session — please try again', 'error');
     }
   };
-
-  const progress = activeSession
-    ? Math.min(100, Math.max(0, Math.round(((activeSession.startMoisture - activeSession.currentMoisture) / (activeSession.startMoisture - activeSession.targetMoisture)) * 100)))
-    : 0;
 
   return (
     <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
@@ -173,38 +152,27 @@ export default function SessionsScreen() {
                 <View style={styles.activeCardHeader}>
                   <View>
                     <Text style={styles.activeDeviceId}>{activeSession.deviceId}</Text>
-                    <Text style={styles.activeGrain}>{activeSession.grainType} | Target: {activeSession.targetMoisture}%</Text>
+                    <Text style={styles.activeGrain}>{activeSession.grainType}</Text>
                   </View>
                   <SessionStatusBadge status="active" />
                 </View>
 
-                {/* Progress */}
-                <View style={styles.progressSection}>
-                  <View style={styles.progressLabels}>
-                    <Text style={styles.progressText}>Drying Progress</Text>
-                    <Text style={styles.progressPercent}>{progress}%</Text>
-                  </View>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                  </View>
-                </View>
-
                 {/* Metrics Grid */}
                 <View style={styles.metricsGrid}>
-                  <View style={styles.metricItem}>
-                    <Ionicons name="water-outline" size={16} color="#3B82F6" />
-                    <Text style={styles.metricValue}>{activeSession.currentMoisture?.toFixed(1)}%</Text>
-                    <Text style={styles.metricLabel}>Moisture</Text>
-                  </View>
                   <View style={styles.metricItem}>
                     <Ionicons name="thermometer-outline" size={16} color="#F97316" />
                     <Text style={styles.metricValue}>{activeSession.avgTemperature?.toFixed(1)}°C</Text>
                     <Text style={styles.metricLabel}>Avg Temp</Text>
                   </View>
                   <View style={styles.metricItem}>
-                    <Ionicons name="flash-outline" size={16} color="#EAB308" />
-                    <Text style={styles.metricValue}>{activeSession.totalEnergyUsed?.toFixed(1)}</Text>
-                    <Text style={styles.metricLabel}>kWh</Text>
+                    <Ionicons name="water-outline" size={16} color="#3B82F6" />
+                    <Text style={styles.metricValue}>{activeSession.avgHumidity?.toFixed(1)}%</Text>
+                    <Text style={styles.metricLabel}>Avg Humidity</Text>
+                  </View>
+                  <View style={styles.metricItem}>
+                    <Ionicons name="pulse-outline" size={16} color="#22C55E" />
+                    <Text style={styles.metricValue}>{activeSession.dataPoints ?? 0}</Text>
+                    <Text style={styles.metricLabel}>Readings</Text>
                   </View>
                   <View style={styles.metricItem}>
                     <Ionicons name="time-outline" size={16} color="#8B5CF6" />
@@ -212,29 +180,6 @@ export default function SessionsScreen() {
                     <Text style={styles.metricLabel}>Elapsed</Text>
                   </View>
                 </View>
-
-                {/* AI Insight */}
-                {aiPrediction && (
-                  <View style={styles.aiRow}>
-                    <Ionicons
-                      name={aiPrediction.recommendationType === 'optimal' ? 'sparkles' : aiPrediction.recommendationType === 'warning' ? 'warning-outline' : 'alert-circle-outline'}
-                      size={14}
-                      color={aiPrediction.recommendationType === 'optimal' ? COLORS.primary : aiPrediction.recommendationType === 'warning' ? '#D97706' : '#DC2626'}
-                    />
-                    <Text style={[styles.aiText, {
-                      color: aiPrediction.recommendationType === 'optimal' ? COLORS.primaryDark : aiPrediction.recommendationType === 'warning' ? '#D97706' : '#DC2626',
-                    }]}>
-                      {aiPrediction.recommendation}
-                    </Text>
-                    {aiPrediction.estimatedMinutesToTarget > 0 && (
-                      <Text style={styles.aiEta}>
-                        ~{aiPrediction.estimatedMinutesToTarget < 60
-                          ? `${aiPrediction.estimatedMinutesToTarget}m`
-                          : `${Math.floor(aiPrediction.estimatedMinutesToTarget / 60)}h ${aiPrediction.estimatedMinutesToTarget % 60}m`}
-                      </Text>
-                    )}
-                  </View>
-                )}
 
                 {/* Actions */}
                 <View style={styles.actionRow}>
@@ -290,7 +235,7 @@ export default function SessionsScreen() {
                 </View>
                 <View style={styles.historyMetrics}>
                   <Text style={styles.historyMetric}>
-                    {session.startMoisture?.toFixed(1)}% → {(session.finalMoisture || session.currentMoisture)?.toFixed(1)}%
+                    {session.avgTemperature != null ? `${session.avgTemperature.toFixed(1)}°C` : '--'} · {session.avgHumidity != null ? `${session.avgHumidity.toFixed(1)}% RH` : '--'}
                   </Text>
                   <Text style={styles.historyMetric}>{formatDuration(session.duration)}</Text>
                   {session.efficiency != null && (
@@ -365,20 +310,6 @@ export default function SessionsScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-
-            {/* Target Moisture */}
-            <Text style={styles.inputLabel}>Target Moisture: {targetMoisture}%</Text>
-            <View style={styles.targetRow}>
-              {[12, 13, 14, 15, 16].map((val) => (
-                <TouchableOpacity
-                  key={val}
-                  style={[styles.chip, targetMoisture === val && styles.chipActive]}
-                  onPress={() => setTargetMoisture(val)}
-                >
-                  <Text style={[styles.chipText, targetMoisture === val && styles.chipTextActive]}>{val}%</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             {/* Buttons */}
             <View style={styles.modalButtons}>

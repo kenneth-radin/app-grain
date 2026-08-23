@@ -81,20 +81,12 @@ export default function DashboardScreen() {
   const { sensorData: realtimeSensor, isOnline: dashboardDeviceOnline, isFallbackMode } = useRealtimeSensor(dashboardDevice?.deviceId);
   const { latestData: fallbackSensor } = useSensorData(dashboardDevice?.deviceId, isFallbackMode);
   const dashboardSensor = dashboardDeviceOnline ? (realtimeSensor || fallbackSensor) : null;
-  const grainWeight = dashboardSensor?.weight;
-  const grainWeightDisplay = grainWeight ? grainWeight : '—';
 
+  // DHT22 only — drying alerts are based on live temperature and humidity.
   const dryingAlert = useMemo(() => {
-    const onlineDevice = dashboardDeviceOnline ? dashboardDevice : null;
-    if (!onlineDevice) return null;
-    // latestMoisture/latestTemperature are injected at runtime by the Firebase listener below
-    const d = onlineDevice as Device & { latestMoisture?: number; latestTemperature?: number };
-    return analyzeDryingStatus(
-      d.latestMoisture ?? 20,
-      DRYING.TARGET_MOISTURE,
-      d.latestTemperature ?? 45,
-    );
-  }, [dashboardDevice, dashboardDeviceOnline]);
+    if (!dashboardDeviceOnline || !dashboardSensor) return null;
+    return analyzeDryingStatus(dashboardSensor.temperature, dashboardSensor.humidity);
+  }, [dashboardDeviceOnline, dashboardSensor]);
 
   // Fire local push notification when drying alert changes to non-normal
   useEffect(() => {
@@ -198,24 +190,6 @@ export default function DashboardScreen() {
               </View>
             </View>
 
-            {/* AI Insights Card */}
-            <TouchableOpacity
-              style={styles.aiCard}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIPrediction); }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.aiCardLeft}>
-                <View style={styles.aiIconBg}>
-                  <Ionicons name="sparkles" size={20} color="#22C55E" />
-                </View>
-                <View style={styles.aiCardText}>
-                  <Text style={styles.aiCardTitle}>AI Insights</Text>
-                  <Text style={styles.aiCardSub}>View drying predictions & recommendations</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-
             {/* Active Drying Session Card */}
             {activeSession && (
               <TouchableOpacity
@@ -231,7 +205,7 @@ export default function DashboardScreen() {
                     <Text style={styles.aiCardTitle}>{dashboardDeviceOnline ? 'Drying' : 'Session offline'}: {activeSession.deviceId}</Text>
                     <Text style={styles.aiCardSub}>
                       {dashboardDeviceOnline
-                        ? `${activeSession.currentMoisture?.toFixed(1)}% → ${activeSession.targetMoisture}% | ${activeSession.grainType}`
+                        ? `${activeSession.grainType} | ${Math.max(0, Math.round((Date.now() - new Date(activeSession.startedAt).getTime()) / 60000))} min elapsed`
                         : 'Prototype is offline. Live drying is paused.'}
                     </Text>
                   </View>
@@ -262,12 +236,6 @@ export default function DashboardScreen() {
                   </View>
                   <View style={styles.sensorCardWrap}>
                     <SensorCard type="humidity" label="Humidity" value={dashboardSensor?.humidity ?? '—'} unit="%" />
-                  </View>
-                  <View style={styles.sensorCardWrap}>
-                    <SensorCard type="moisture" label="Moisture" value={dashboardSensor?.moisture ?? '—'} unit="%" />
-                  </View>
-                  <View style={styles.sensorCardWrap}>
-                    <SensorCard type="weight" label="Grain Weight" value={grainWeightDisplay} unit="kg" />
                   </View>
                 </View>
               </View>

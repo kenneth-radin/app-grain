@@ -7,7 +7,7 @@ interface UseDryingSessionsReturn {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  startSession: (deviceId: string, grainType?: string, targetMoisture?: number) => Promise<DryingSession | null>;
+  startSession: (deviceId: string, grainType?: string) => Promise<DryingSession | null>;
   endSession: (sessionId: string, action: 'complete' | 'abort') => Promise<boolean>;
 }
 
@@ -17,9 +17,8 @@ export function useDryingSessions(_deviceId?: string): UseDryingSessionsReturn {
   const startSession = async (
     deviceId: string,
     grainType?: string,
-    targetMoisture?: number,
   ): Promise<DryingSession | null> => {
-    return ctx.startDrying({ deviceId, grainType, targetMoisture });
+    return ctx.startDrying({ deviceId, grainType });
   };
 
   const endSession = async (

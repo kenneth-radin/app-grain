@@ -18,11 +18,9 @@ export async function triggerDryingAlertNotification(
   try {
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: alert.type === 'over_drying'
-          ? '⚠️ Over-Drying Alert'
-          : alert.type === 'complete'
-            ? '✅ Drying Complete'
-            : '🌡️ Drying Warning',
+        title: alert.type === 'overheating'
+          ? '🌡️ Overheating Warning'
+          : '💧 High Humidity Warning',
         body: alert.message,
         data: {
           deviceId,

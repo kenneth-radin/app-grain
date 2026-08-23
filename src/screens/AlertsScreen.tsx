@@ -20,8 +20,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Header, AlertCard } from '@/components';
 import { grainApi } from '@/api';
-import type { AIPrediction } from '@/api';
-import { useDevices } from '@/hooks';
 import { useToast } from '@/context/AppContext';
 import { GRADIENTS, IOS_TYPOGRAPHY } from '@/utils/constants';
 import { AlertType } from '@/utils/enums';
@@ -52,7 +50,6 @@ const FILTER_CONFIG: { key: FilterType; label: string; color: string; activeBg: 
 export default function AlertsScreen() {
   const router = useRouter();
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
-  const [aiAlerts, setAiAlerts] = useState<AlertEntry[]>([]);
   const [unreadIds, setUnreadIds] = useState<Set<string | number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -61,7 +58,6 @@ export default function AlertsScreen() {
   const [warningAlerts, setWarningAlerts] = useState(true);
   const [infoAlerts, setInfoAlerts] = useState(true);
   const { showToast } = useToast();
-  const { devices } = useDevices();
 
   const ALERT_SETTINGS_KEY = 'grain_alert_settings';
 
@@ -114,65 +110,15 @@ export default function AlertsScreen() {
     }
   }, []);
 
-  // Fetch AI predictions and convert to alerts
-  const fetchAIAlerts = useCallback(async () => {
-    if (!devices.length) return;
-    const newAiAlerts: AlertEntry[] = [];
-    await Promise.all(
-      devices.map(async (device) => {
-        try {
-          const sensorData = await grainApi.sensors.getLatestData(device.deviceId);
-          if (!sensorData) return;
-          const prediction: AIPrediction = await grainApi.ai.predict({
-            deviceId: device.deviceId,
-            moisture: sensorData.moisture ?? 0,
-            temperature: sensorData.temperature ?? 0,
-            humidity: sensorData.humidity ?? 0,
-            fanSpeed: sensorData.fanSpeed ?? 0,
-            timeElapsed: 0,
-          });
-          if (prediction.recommendationType !== 'optimal') {
-            const severity = prediction.recommendationType === 'critical'
-              ? AlertType.Error
-              : AlertType.Warning;
-            newAiAlerts.push({
-              id: `ai-${device.deviceId}-${Date.now()}`,
-              severity,
-              title: `AI: ${device.name || device.deviceId}`,
-              message: prediction.recommendation,
-              timestamp: new Date().toISOString(),
-              deviceId: device.deviceId,
-            });
-          }
-        } catch {
-          // Silently skip devices with no sensor data or prediction
-        }
-      })
-    );
-    setAiAlerts(newAiAlerts);
-    if (newAiAlerts.length > 0) {
-      setUnreadIds((prev) => {
-        const next = new Set(prev);
-        newAiAlerts.forEach((a) => next.add(a.id));
-        return next;
-      });
-    }
-  }, [devices]);
-
   useEffect(() => {
     fetchAlerts();
   }, [fetchAlerts]);
-
-  useEffect(() => {
-    if (devices.length > 0) fetchAIAlerts();
-  }, [devices, fetchAIAlerts]);
 
   // Refresh alerts on focus
   useFocusEffect(
     useCallback(() => {
       fetchAlerts();
-      if (devices.length > 0) fetchAIAlerts();
-    }, [fetchAlerts, fetchAIAlerts, devices])
+    }, [fetchAlerts])
   );
 
   const onRefresh = useCallback(async () => {
@@ -192,7 +138,6 @@ export default function AlertsScreen() {
   const handleDismiss = (id: string | number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
-    setAiAlerts((prev) => prev.filter((a) => a.id !== id));
     setUnreadIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
@@ -220,7 +165,7 @@ export default function AlertsScreen() {
     }
   };
 
-  const allAlerts = [...aiAlerts, ...alerts];
+  const allAlerts = alerts;
   const filteredAlerts = filter === 'all' ? allAlerts : allAlerts.filter((a) => a.severity === filter);
 
   return (

@@ -23,7 +23,6 @@ export default function AppLayout() {
         <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <Stack.Screen name="dashboard" />
           <Stack.Screen name="control" />
-          <Stack.Screen name="ai-prediction" />
           <Stack.Screen name="ai-chatbot" />
           <Stack.Screen name="analytics" />
           <Stack.Screen name="alerts" />

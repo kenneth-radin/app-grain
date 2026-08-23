@@ -97,9 +97,10 @@ export default function AnalyticsScreen() {
     { key: 'monthly', label: 'Monthly' },
   ];
 
-  const moistureTrend = overview?.moistureTrend ?? [];
+  // DHT22 only — analytics show temperature and humidity trends.
+  const temperatureTrend = overview?.temperatureTrend ?? [];
+  const humidityTrend = overview?.humidityTrend ?? [];
   const dryingCycles = overview?.dryingCycles ?? [];
-  const energyConsumption = overview?.energyConsumption ?? [];
 
   const safeChartData = (items: Array<{ label: string; value: number }> | undefined | null, fallback: typeof fallbackData) => {
     if (!items || !Array.isArray(items) || items.length === 0) return fallback;
@@ -115,12 +116,9 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const moistureChartData = moistureTrend.length > 0
-    ? { labels: moistureTrend.map((d) => d?.label || '--'), datasets: [{ data: moistureTrend.map((d) => d?.value ?? 0) }] }
-    : fallbackData;
-
+  const temperatureChartData = safeChartData(temperatureTrend, fallbackData);
+  const humidityChartData = safeChartData(humidityTrend, fallbackData);
   const cycleChartData = safeChartData(dryingCycles, fallbackData);
-  const energyChartData = safeChartData(energyConsumption, fallbackData);
 
   return (
     <SafeAreaViewCompat style={styles.container} edges={['top', 'bottom']}>
@@ -176,9 +174,21 @@ export default function AnalyticsScreen() {
             ) : (
               <ErrorBoundary>
                 <View style={styles.chartCard}>
-                  <Text style={styles.chartTitle}>Moisture Levels Over Time</Text>
+                  <Text style={styles.chartTitle}>Temperature Over Time</Text>
                   <LineChart
-                    data={moistureChartData}
+                    data={temperatureChartData}
+                    width={screenWidth}
+                    height={200}
+                    chartConfig={chartConfig}
+                    bezier
+                    style={styles.chart}
+                  />
+                </View>
+
+                <View style={styles.chartCard}>
+                  <Text style={styles.chartTitle}>Humidity Over Time</Text>
+                  <LineChart
+                    data={humidityChartData}
                     width={screenWidth}
                     height={200}
                     chartConfig={chartConfig}
@@ -197,19 +207,6 @@ export default function AnalyticsScreen() {
                     style={styles.chart}
                     yAxisLabel=""
                     yAxisSuffix="hrs"
-                  />
-                </View>
-
-                <View style={styles.chartCard}>
-                  <Text style={styles.chartTitle}>Weekly Energy Consumption</Text>
-                  <BarChart
-                    data={energyChartData}
-                    width={screenWidth}
-                    height={200}
-                    chartConfig={chartConfig}
-                    style={styles.chart}
-                    yAxisLabel=""
-                    yAxisSuffix="kWh"
                   />
                 </View>
               </ErrorBoundary>

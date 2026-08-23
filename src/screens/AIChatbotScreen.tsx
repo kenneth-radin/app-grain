@@ -38,22 +38,22 @@ const KNOWLEDGE_BASE: QAPair[] = [
   {
     keywords: ['what is grain', 'ano ang grain', 'system', 'tungkol', 'about', 'platform'],
     answer: {
-      en: 'grAIn is an AI-assisted IoT solar-powered rice grain dryer monitoring system. It lets farmers monitor drying conditions in real time, control the dryer remotely, and get AI-powered predictions on moisture levels — all from your phone.',
-      fil: 'Ang grAIn ay isang AI-assisted IoT solar-powered na sistema para sa pagmo-monitor ng grain dryer. Pinapayagan nito ang mga magsasaka na makita ang kondisyon ng pagpapatuyo sa real time, kontrolin ang dryer mula sa telepono, at makakuha ng AI predictions sa moisture levels.',
+      en: 'grAIn is an AI-assisted IoT solar-powered rice grain dryer monitoring system. It lets farmers monitor drying conditions in real time and control the dryer remotely — all from your phone.',
+      fil: 'Ang grAIn ay isang AI-assisted IoT solar-powered na sistema para sa pagmo-monitor ng grain dryer. Pinapayagan nito ang mga magsasaka na makita ang kondisyon ng pagpapatuyo sa real time at kontrolin ang dryer mula sa telepono.',
     },
   },
   {
-    keywords: ['target moisture', 'safe storage', 'ligtas', 'bakit 14', 'why 14', 'storage moisture'],
+    keywords: ['safe storage', 'ligtas', 'bakit 14', 'why 14'],
     answer: {
-      en: 'The target moisture content for safe rice storage is 14% wet basis. Above 14%, grains are prone to mold, fungal growth, and quality degradation. The AI automatically stops the dryer when this level is reached.',
-      fil: 'Ang target moisture content para sa ligtas na imbakan ng bigas ay 14% wet basis. Kapag higit sa 14%, ang butil ay madaling magkaroon ng amag. Awtomatikong pinapatay ng AI ang dryer kapag naabot na ang level na ito.',
+      en: 'The safe-storage goal for rice is 14% moisture content (wet basis) — used as a reference for how long to dry. Above 14%, grains are prone to mold, fungal growth, and quality degradation. Monitor temperature and humidity in the app and stop drying once conditions are stable.',
+      fil: 'Ang layunin para sa ligtas na imbakan ng bigas ay 14% moisture content (wet basis) — ginagamit bilang reference kung gaano katagal magpatuyo. Kapag higit sa 14%, madaling magkaroon ng amag ang butil. Subaybayan ang temperatura at humidity sa app at ihinto ang pagpapatuyo kapag stable na ang kondisyon.',
     },
   },
   {
     keywords: ['auto mode', 'auto', 'automatic', 'awtomatiko', 'ai control', 'ai mode', 'what does auto'],
     answer: {
-      en: 'In Auto mode, the AI monitors live sensor data every 60 seconds and automatically adjusts settings:\n• MAINTAIN — conditions optimal, no change\n• REDUCE_TEMP — temp >65°C, reduces by 5°C\n• INCREASE_TEMP — temp <38°C, increases by 5°C\n• INCREASE_FAN — fan too low or humidity too high, +15%\n• STOP — target moisture reached, dryer auto-stops',
-      fil: 'Sa Auto mode, ang AI ay nag-monitor ng live sensor data tuwing 60 segundo at awtomatikong inaayos ang mga setting:\n• MAINTAIN — optimal ang kondisyon\n• REDUCE_TEMP — temp >65°C, binababa ng 5°C\n• INCREASE_TEMP — temp <38°C, itinataas ng 5°C\n• INCREASE_FAN — mababa ang fan o mataas ang humidity, +15%\n• STOP — naabot ang target moisture, pinapatay ang dryer',
+      en: 'In Auto mode, the AI monitors live sensor data every 60 seconds and automatically adjusts settings:\n• MAINTAIN — conditions optimal, no change\n• REDUCE_TEMP — temp >65°C, reduces by 5°C\n• INCREASE_TEMP — temp <38°C, increases by 5°C\n• INCREASE_FAN — fan too low or humidity too high, +15%\n• STOP — drying complete, dryer auto-stops',
+      fil: 'Sa Auto mode, ang AI ay nag-monitor ng live sensor data tuwing 60 segundo at awtomatikong inaayos ang mga setting:\n• MAINTAIN — optimal ang kondisyon\n• REDUCE_TEMP — temp >65°C, binababa ng 5°C\n• INCREASE_TEMP — temp <38°C, itinataas ng 5°C\n• INCREASE_FAN — mababa ang fan o mataas ang humidity, +15%\n• STOP — tapos na ang pagpapatuyo, awtomatikong pinapatay ang dryer',
     },
   },
   {
@@ -66,29 +66,29 @@ const KNOWLEDGE_BASE: QAPair[] = [
   {
     keywords: ['ai prediction', 'prediction', 'predict', 'hula', 'forecast', 'random forest'],
     answer: {
-      en: 'The AI Prediction uses a trained Random Forest model (R² = 0.91) to forecast:\n• Moisture in 30 minutes\n• Time to reach 14% target\n• Efficiency score (0–100)\n• Confidence level (65–97%)\n• 6-hour projected moisture curve\n• Recommendation (optimal / warning / critical)',
-      fil: 'Ang AI Prediction ay gumagamit ng trained Random Forest model (R² = 0.91) para mahulaan ang:\n• Moisture pagkatapos ng 30 minuto\n• Oras para maabot ang 14% target\n• Efficiency score (0–100)\n• Confidence level (65–97%)\n• 6-oras na projected moisture curve\n• Rekomendasyon (optimal / warning / critical)',
+      en: 'The assistant gives guidance based on live DHT22 readings:\n• Overheating warnings when temperature exceeds safe limits\n• High-humidity alerts when ambient RH slows drying\n• Recommendations to adjust heater or fans\n\nAsk me to "diagnose my current readings" anytime.',
+      fil: 'Nagbibigay ang assistant ng gabay batay sa live DHT22 readings:\n• Babala sa overheating kapag lumampas ang temperatura\n• Alerto sa mataas na humidity na pumipigil sa pagpapatuyo\n• Rekomendasyon sa pag-adjust ng heater o mga fan\n\nItanong mo ang "i-diagnose ang current readings ko" anumang oras.',
     },
   },
   {
-    keywords: ['sensor', 'sensors', 'temperature', 'humidity', 'moisture sensor', 'anong sensor', 'what sensors'],
+    keywords: ['sensor', 'sensors', 'temperature', 'humidity', 'anong sensor', 'what sensors'],
     answer: {
-      en: 'The grAIn dryer uses sensors connected to an ESP32:\n• DHT22 — temperature & humidity\n• Capacitive moisture sensor — grain moisture %\n• Load cell + HX711 — grain weight (kg)\n• INA219 — energy consumption (kWh)\n• Solar panel voltage monitor\n\nData is sent every 5–30 seconds.',
-      fil: 'Ang grAIn dryer ay gumagamit ng mga sensor na konektado sa ESP32:\n• DHT22 — temperatura at humidity\n• Capacitive moisture sensor — moisture % ng butil\n• Load cell + HX711 — timbang ng butil (kg)\n• INA219 — konsumo ng enerhiya (kWh)\n• Solar panel voltage monitor\n\nAng data ay ipinapadala tuwing 5–30 segundo.',
+      en: 'The grAIn dryer uses a DHT22 sensor connected to the ESP32:\n• Temperature (°C)\n• Relative humidity (%)\n\nReadings are streamed live through Firebase Realtime Database every few seconds.',
+      fil: 'Ang grAIn dryer ay gumagamit ng DHT22 sensor na nakakonekta sa ESP32:\n• Temperatura (°C)\n• Relative humidity (%)\n\nAng readings ay ipinapadala nang live sa pamamagitan ng Firebase Realtime Database kada ilang segundo.',
     },
   },
   {
     keywords: ['solar', 'solar power', 'energy', 'enerhiya', 'solar panel', 'kuryente'],
     answer: {
-      en: 'The dryer is powered by solar panels. Solar voltage is monitored in real time — higher voltage means better drying efficiency. The AI considers solar voltage when making recommendations.',
-      fil: 'Ang dryer ay pinapagana ng solar panels. Ang solar voltage ay mino-monitor sa real time — mas mataas na voltage ay nangangahulugang mas magandang efficiency. Isinasaalang-alang ng AI ang solar voltage sa paggawa ng rekomendasyon.',
+      en: 'The dryer is powered by solar panels. Sensor monitoring focuses on DHT22 temperature and humidity — check the Dashboard for live readings while drying.',
+      fil: 'Pinapagana ng solar panels ang dryer. Nakatuon ang sensor monitoring sa DHT22 temperatura at humidity — tingnan ang Dashboard para sa live readings habang nagpapatuyo.',
     },
   },
   {
     keywords: ['session', 'drying session', 'start session', 'start drying', 'paano magsimula', 'grain type'],
     answer: {
-      en: 'To start a drying session:\n1. Go to Sessions tab\n2. Tap "Start Session"\n3. Select your device\n4. Choose grain type (rice, corn, wheat, soybean, coffee)\n5. Set target moisture (default: 14%)\n6. Tap Start\n\nThe session auto-completes when target moisture is reached.',
-      fil: 'Para magsimula ng drying session:\n1. Pumunta sa Sessions tab\n2. I-tap ang "Start Session"\n3. Piliin ang iyong device\n4. Piliin ang uri ng butil (bigas, mais, trigo, soybean, kape)\n5. Itakda ang target moisture (default: 14%)\n6. I-tap ang Start\n\nAwtomatikong natatapos ang session kapag naabot ang target moisture.',
+      en: 'To start a drying session:\n1. Go to Sessions tab\n2. Tap "Start Session"\n3. Select your device\n4. Choose grain type (rice, corn, wheat, soybean, coffee)\n5. Tap Start\n\nEnd the session anytime with Complete or Abort.',
+      fil: 'Para magsimula ng drying session:\n1. Pumunta sa Sessions tab\n2. I-tap ang "Start Session"\n3. Piliin ang iyong device\n4. Piliin ang uri ng butil (bigas, mais, trigo, soybean, kape)\n5. I-tap ang Start\n\nPuwede mong tapusin anumang oras gamit ang Complete o Abort.',
     },
   },
   {
@@ -115,8 +115,8 @@ const KNOWLEDGE_BASE: QAPair[] = [
   {
     keywords: ['analytics', 'history', 'kasaysayan', 'chart', 'graph', 'trend', 'report'],
     answer: {
-      en: 'The Analytics tab shows:\n• Moisture trend over time\n• Drying cycles history\n• Energy consumption per session\n• Period filter: daily / weekly / monthly\n• Device comparison filter',
-      fil: 'Ang Analytics tab ay nagpapakita ng:\n• Trend ng moisture sa paglipas ng panahon\n• Kasaysayan ng drying cycles\n• Konsumo ng enerhiya bawat session\n• Period filter: araw-araw / linggo-linggo / buwan-buwan',
+      en: 'The Analytics tab shows:\n• Temperature trend over time\n• Humidity trend over time\n• Drying cycles history\n• Period filter: daily / weekly / monthly',
+      fil: 'Ang Analytics tab ay nagpapakita ng:\n• Trend ng temperatura sa paglipas ng panahon\n• Trend ng humidity sa paglipas ng panahon\n• Kasaysayan ng drying cycles\n• Period filter: araw-araw / linggo-linggo / buwan-buwan',
     },
   },
   {
@@ -136,8 +136,8 @@ const KNOWLEDGE_BASE: QAPair[] = [
   {
     keywords: ['efficiency', 'episyente', 'efficiency score', 'score'],
     answer: {
-      en: 'Drying efficiency (0–100%) is based on:\n• Temperature (optimal: 40–60°C)\n• Fan speed (optimal: 70–90%)\n• Humidity (lower = better)\n• Solar voltage (higher = better)\n\nScore above 70% is good. Auto mode targets maximum efficiency.',
-      fil: 'Ang drying efficiency (0–100%) ay batay sa:\n• Temperatura (optimal: 40–60°C)\n• Bilis ng fan (optimal: 70–90%)\n• Humidity (mas mababa = mas maganda)\n• Solar voltage (mas mataas = mas maganda)\n\nScore na higit sa 70% ay mabuti. Tina-target ng Auto mode ang maximum efficiency.',
+      en: 'Good drying conditions are:\n• Temperature (optimal: 40–60°C)\n• Fan speed (optimal: 70–90%)\n• Humidity (lower = better)\n\nKeep these ranges for efficient drying. Auto mode adjusts automatically.',
+      fil: 'Mabubuting kondisyon ng pagpapatuyo:\n• Temperatura (optimal: 40–60°C)\n• Bilis ng fan (optimal: 70–90%)\n• Humidity (mas mababa = mas maganda)\n\nPanatilihin ang mga range na ito. Awtomatikong inaayos ng Auto mode.',
     },
   },
   {
@@ -150,8 +150,8 @@ const KNOWLEDGE_BASE: QAPair[] = [
   {
     keywords: ['help', 'tulong', 'what can you do', 'ano ang magagawa mo', 'topics', 'paksa'],
     answer: {
-      en: 'I can help with:\n• System overview\n• Auto vs Manual mode\n• AI predictions & ML model\n• Moisture targets\n• Sensors & hardware\n• Drying sessions\n• Alerts & notifications\n• Adding devices\n• Analytics\n• Fan & temperature control\n• Offline mode\n• Profile & settings\n\nAsk anything in English or Filipino!',
-      fil: 'Maaari akong tumulong sa:\n• Pangkalahatang-ideya ng sistema\n• Auto vs Manual mode\n• AI predictions at ML model\n• Target moisture\n• Mga sensor at hardware\n• Drying sessions\n• Mga alerto at notification\n• Pagdaragdag ng device\n• Analytics\n• Kontrol ng fan at temperatura\n• Offline mode\n• Profile at settings\n\nMagtanong sa English o Filipino!',
+      en: 'I can help with:\n• System overview\n• Auto vs Manual mode\n• Safe storage goals\n• Sensors & hardware\n• Drying sessions\n• Alerts & notifications\n• Adding devices\n• Analytics\n• Fan & temperature control\n• Offline mode\n• Profile & settings\n\nAsk anything in English or Filipino!',
+      fil: 'Maaari akong tumulong sa:\n• Pangkalahatang-ideya ng sistema\n• Auto vs Manual mode\n• Ligtas na imbakan\n• Mga sensor at hardware\n• Drying sessions\n• Mga alerto at notification\n• Pagdaragdag ng device\n• Analytics\n• Kontrol ng fan at temperatura\n• Offline mode\n• Profile at settings\n\nMagtanong sa English o Filipino!',
     },
   },
 ];

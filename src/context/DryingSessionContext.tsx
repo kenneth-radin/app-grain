@@ -7,7 +7,6 @@ import { useAuth } from '@/context/AuthContext';
 interface StartSessionOptions {
   deviceId: string;
   grainType?: string;
-  targetMoisture?: number;
   mode?: DryerMode;
   temperature?: number;
   fanSpeed?: number;
@@ -62,7 +61,6 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
         prev.every((session, index) =>
           session._id === next[index]?._id &&
           session.status === next[index]?.status &&
-          session.currentMoisture === next[index]?.currentMoisture &&
           session.updatedAt === next[index]?.updatedAt
         )
       ) {
@@ -77,7 +75,6 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
       if (
         prev?._id === next?._id &&
         prev?.status === next?.status &&
-        prev?.currentMoisture === next?.currentMoisture &&
         prev?.updatedAt === next?.updatedAt
       ) {
         return prev;
@@ -169,7 +166,6 @@ export function DryingSessionProvider({ children }: { children: React.ReactNode 
         session = await grainApi.sessions.start({
           deviceId: opts.deviceId,
           grainType: opts.grainType,
-          targetMoisture: opts.targetMoisture,
         });
       } catch (sessionErr) {
         const msg = 'Drying started but session tracking failed. Please check Sessions tab.';

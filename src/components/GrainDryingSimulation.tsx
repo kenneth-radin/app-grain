@@ -7,7 +7,6 @@ import Svg, {
   Line,
   LinearGradient,
   Path,
-  Polygon,
   Rect,
   Stop,
 } from 'react-native-svg';
@@ -28,20 +27,15 @@ const AnimatedView = Animated.createAnimatedComponent(View);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type BinaryState = 'ON' | 'OFF';
-type StepperState = 'ON' | 'OFF' | 'CW' | 'CCW';
 
+// DHT22 only — the simulation is driven by temperature and humidity.
 interface GrainDryingProps {
-  moisture: number;
   temperature: number;
   humidity?: number;
-  fanSpeed?: number;
   isRunning: boolean;
   fan1State?: BinaryState;
   fan2State?: BinaryState;
   heaterState?: BinaryState;
-  stepperState?: StepperState;
-  relayState?: BinaryState;
-  targetMoisture?: number;
 }
 
 interface GrainParticle {
@@ -57,21 +51,10 @@ const PANEL_HEIGHT = 280;
 const CHAMBER = { x: 82, y: 42, width: 156, height: 124 };
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-function getMoistureColor(moisture: number, target: number) {
-  if (moisture <= target) return COLORS.success;
-  if (moisture <= 22) return '#F59E0B';
-  return COLORS.info;
-}
-
 function getTemperatureColor(temperature: number) {
   if (temperature < 40) return COLORS.info;
   if (temperature <= 55) return COLORS.success;
   return COLORS.danger;
-}
-
-function getDrynessPercent(moisture: number, target: number) {
-  if (moisture <= target) return 100;
-  return Math.round(clamp(((35 - moisture) / (35 - target)) * 100, 0, 100));
 }
 
 function makeParticles(): GrainParticle[] {
@@ -88,12 +71,10 @@ function makeParticles(): GrainParticle[] {
 function GrainParticleDot({
   particle,
   active,
-  fanSpeed,
   color,
 }: {
   particle: GrainParticle;
   active: boolean;
-  fanSpeed: number;
   color: string;
 }) {
   const progress = useSharedValue(particle.delay);
@@ -105,9 +86,8 @@ function GrainParticleDot({
       return;
     }
 
-    const duration = 2600 - clamp(fanSpeed, 0, 100) * 17;
-    progress.value = withRepeat(withTiming(1, { duration }), -1, false);
-  }, [active, fanSpeed, particle.delay, progress]);
+    progress.value = withRepeat(withTiming(1, { duration: 2600 }), -1, false);
+  }, [active, particle.delay, progress]);
 
   const animatedProps = useAnimatedProps(() => {
     const travel = (progress.value + particle.delay) % 1;
@@ -134,25 +114,22 @@ function FanRotor({
   x,
   y,
   active,
-  fanSpeed,
 }: {
   x: number;
   y: number;
   active: boolean;
-  fanSpeed: number;
 }) {
   const spin = useSharedValue(0);
 
   useEffect(() => {
     cancelAnimation(spin);
-    if (!active || fanSpeed <= 0) {
+    if (!active) {
       spin.value = withTiming(0, { duration: 250 });
       return;
     }
 
-    const duration = 1000 - clamp(fanSpeed, 0, 100) * 7.4;
-    spin.value = withRepeat(withTiming(360, { duration }), -1, false);
-  }, [active, fanSpeed, spin]);
+    spin.value = withRepeat(withTiming(360, { duration: 1000 }), -1, false);
+  }, [active, spin]);
 
   const rotorStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${spin.value}deg` }],
@@ -212,47 +189,6 @@ function HeatWave({ left, delay, active, intensity }: { left: number; delay: num
   );
 }
 
-function ConveyorArrow({
-  index,
-  active,
-  direction,
-}: {
-  index: number;
-  active: boolean;
-  direction: 'CW' | 'CCW';
-}) {
-  const flow = useSharedValue(0);
-
-  useEffect(() => {
-    cancelAnimation(flow);
-    if (!active) {
-      flow.value = withTiming(0, { duration: 250 });
-      return;
-    }
-
-    flow.value = withRepeat(withTiming(1, { duration: 1050 }), -1, false);
-  }, [active, flow]);
-
-  const arrowStyle = useAnimatedStyle(() => {
-    const offset = direction === 'CCW'
-      ? interpolate(flow.value, [0, 1], [18, -18])
-      : interpolate(flow.value, [0, 1], [-18, 18]);
-    return {
-      opacity: active ? 0.9 : 0.25,
-      transform: [{ translateX: offset }, { rotate: direction === 'CCW' ? '180deg' : '0deg' }],
-    };
-  });
-
-  return (
-    <AnimatedView style={[styles.conveyorArrow, { left: 96 + index * 42 }, arrowStyle]}>
-      <Svg width={28} height={14} viewBox="0 0 28 14">
-        <Path d="M1 7 H20" stroke={COLORS.success} strokeWidth={3} strokeLinecap="round" />
-        <Polygon points="19,1 27,7 19,13" fill={COLORS.success} />
-      </Svg>
-    </AnimatedView>
-  );
-}
-
 function StatusLed({ label, active }: { label: string; active: boolean }) {
   const pulse = useSharedValue(0);
 
@@ -282,32 +218,22 @@ function StatusLed({ label, active }: { label: string; active: boolean }) {
 }
 
 export default function GrainDryingSimulation({
-  moisture,
   temperature,
   humidity = 0,
-  fanSpeed = 0,
   isRunning,
   fan1State,
   fan2State,
   heaterState,
-  stepperState = 'OFF',
-  relayState,
-  targetMoisture = 14,
 }: GrainDryingProps) {
   const isFocused = useIsFocused();
   const unitPulse = useSharedValue(1);
-  const moistureColor = getMoistureColor(moisture, targetMoisture);
   const tempColor = getTemperatureColor(temperature);
-  const drynessPercent = getDrynessPercent(moisture, targetMoisture);
   const particles = useMemo(() => makeParticles(), []);
 
-  const fan1Active = fan1State ? fan1State === 'ON' : isRunning && fanSpeed > 0;
-  const fan2Active = fan2State ? fan2State === 'ON' : isRunning && fanSpeed > 45;
+  const fan1Active = fan1State ? fan1State === 'ON' : isRunning;
+  const fan2Active = fan2State ? fan2State === 'ON' : isRunning;
   const heaterActive = heaterState ? heaterState === 'ON' : isRunning && temperature >= 40;
-  const relayActive = relayState ? relayState === 'ON' : isRunning;
-  const stepperActive = stepperState !== 'OFF';
-  const stepperDirection = stepperState === 'CCW' ? 'CCW' : 'CW';
-  const grainFlowActive = isFocused && isRunning && (fan1Active || fan2Active || fanSpeed > 0);
+  const grainFlowActive = isFocused && isRunning && (fan1Active || fan2Active);
   const heatIntensity = clamp((temperature - 30) / 35, 0.25, 1);
 
   useEffect(() => {
@@ -348,7 +274,7 @@ export default function GrainDryingSimulation({
         <Svg width="100%" height={188} viewBox="0 0 320 188">
           <Defs>
             <LinearGradient id="grainFill" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={moistureColor} stopOpacity="0.72" />
+              <Stop offset="0" stopColor={tempColor} stopOpacity="0.72" />
               <Stop offset="0.52" stopColor="#F59E0B" stopOpacity="0.48" />
               <Stop offset="1" stopColor={COLORS.success} stopOpacity="0.55" />
             </LinearGradient>
@@ -370,8 +296,7 @@ export default function GrainDryingSimulation({
               key={particle.id}
               particle={particle}
               active={grainFlowActive}
-              fanSpeed={fanSpeed}
-              color={moisture <= targetMoisture ? '#DCFCE7' : '#FEF3C7'}
+              color={isRunning ? '#DCFCE7' : '#FEF3C7'}
             />
           ))}
 
@@ -388,8 +313,8 @@ export default function GrainDryingSimulation({
           <Path d="M148 154 H172 M151 146 H169 M151 162 H169" stroke={heaterActive ? COLORS.orange : '#6B7280'} strokeWidth={3} strokeLinecap="round" />
         </Svg>
 
-        <FanRotor x={48} y={74} active={fan1Active && isFocused} fanSpeed={fanSpeed} />
-        <FanRotor x={272} y={74} active={fan2Active && isFocused} fanSpeed={fanSpeed} />
+        <FanRotor x={48} y={74} active={fan1Active && isFocused} />
+        <FanRotor x={272} y={74} active={fan2Active && isFocused} />
 
         {[0, 1, 2].map((index) => (
           <HeatWave
@@ -401,14 +326,6 @@ export default function GrainDryingSimulation({
           />
         ))}
 
-        {[0, 1, 2, 3].map((index) => (
-          <ConveyorArrow
-            key={index}
-            index={index}
-            active={isFocused && stepperActive && relayActive}
-            direction={stepperDirection}
-          />
-        ))}
       </View>
 
       <View style={styles.telemetryRow}>
@@ -421,24 +338,19 @@ export default function GrainDryingSimulation({
           <Text style={styles.metricValue}>{humidity.toFixed(0)}%</Text>
         </View>
         <View style={styles.metric}>
-          <Text style={styles.metricLabel}>MOIST</Text>
-          <Text style={[styles.metricValue, { color: moistureColor }]}>{moisture.toFixed(1)}%</Text>
-        </View>
-        <View style={styles.metric}>
-          <Text style={styles.metricLabel}>FAN</Text>
-          <Text style={styles.metricValue}>{Math.round(fanSpeed)}%</Text>
+          <Text style={styles.metricLabel}>STATUS</Text>
+          <Text style={[styles.metricValue, { color: isRunning ? COLORS.success : '#94A3B8' }]}>{isRunning ? 'RUN' : 'IDLE'}</Text>
         </View>
       </View>
 
       <View style={styles.footerRow}>
         <View style={styles.drynessTrack}>
-          <View style={[styles.drynessFill, { width: `${drynessPercent}%`, backgroundColor: moistureColor }]} />
+          <View style={[styles.drynessFill, { width: `${Math.round(heatIntensity * 100)}%`, backgroundColor: tempColor }]} />
         </View>
         <View style={styles.ledRow}>
           <StatusLed label="F1" active={fan1Active} />
           <StatusLed label="F2" active={fan2Active} />
           <StatusLed label="HTR" active={heaterActive} />
-          <StatusLed label="AUG" active={relayActive} />
         </View>
       </View>
     </AnimatedView>
@@ -515,12 +427,6 @@ const styles = StyleSheet.create({
     top: 116,
     width: 18,
     height: 42,
-  },
-  conveyorArrow: {
-    position: 'absolute',
-    top: 169,
-    width: 28,
-    height: 14,
   },
   telemetryRow: {
     flexDirection: 'row',

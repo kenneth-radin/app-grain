@@ -4,13 +4,10 @@ import { db } from '@/lib/firebase'
 import { DeviceStatus } from '@/utils/enums'
 import { isSensorData } from '@/utils/typeGuards'
 
+// DHT22 only — temperature and humidity are the live sensor values.
 export interface RealtimeSensorData {
   temperature: number
   humidity: number
-  moisture: number
-  fanSpeed: number
-  energy: number
-  weight?: number
   status: string
   updatedAt: number
 }

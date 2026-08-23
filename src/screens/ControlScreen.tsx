@@ -12,8 +12,8 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import { Header, StatusBadge, CommandStatusBanner, DeviceSelector, DryerModeSelector, TemperatureSlider, FanControlPanel, AIAutoStopCard } from '@/components';
-import { useDevices, useDryerControl, useFanControl, useHeaterControl, useRealtimeSensor, useRelayControl, useStepperControl } from '@/hooks';
+import { Header, StatusBadge, CommandStatusBanner, DeviceSelector, DryerModeSelector, TemperatureSlider, FanControlPanel } from '@/components';
+import { useDevices, useDryerControl, useFanControl, useHeaterControl, useRealtimeSensor } from '@/hooks';
 import { useServerStatusContext } from '@/context/ServerStatusContext';
 import { GRADIENTS, IOS_TYPOGRAPHY, COLORS } from '@/utils/constants';
 import { DryerMode, DryerStatus } from '@/utils/enums';
@@ -34,18 +34,6 @@ export default function ControlScreen() {
     dryer.commandAck,
     dryer.commandTimeout,
   );
-  const stepper = useStepperControl(
-    dryer.selectedDevice?.deviceId,
-    dryer.setSyncingUntil,
-    dryer.commandAck,
-    dryer.commandTimeout,
-  );
-  const relay = useRelayControl(
-    dryer.selectedDevice?.deviceId,
-    dryer.setSyncingUntil,
-    dryer.commandAck,
-    dryer.commandTimeout,
-  );
   const heater = useHeaterControl(
     dryer.selectedDevice?.deviceId,
     dryer.setSyncingUntil,
@@ -55,10 +43,8 @@ export default function ControlScreen() {
   const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
 
   const deviceId = dryer.selectedDevice?.deviceId;
-  const weightDisplay = sensorData?.weight ? sensorData.weight.toFixed(1) : '—';
   const fan1Status = runtimeState?.fan1State ?? fan.fan1Status;
   const fan2Status = runtimeState?.fan2State ?? fan.fan2Status;
-  const relayStatus = runtimeState?.relayState ?? relay.relayStatus;
   const heaterStatus = runtimeState?.heaterState ?? heater.heaterStatus;
   const selectedDeviceId = dryer.selectedDevice?.deviceId;
   const setSelectedDevice = dryer.setSelectedDevice;
@@ -126,15 +112,6 @@ export default function ControlScreen() {
                 deviceName={dryer.selectedDevice?.name || dryer.selectedDevice?.deviceId}
               />
 
-              {/* AI Auto Mode Banner */}
-              {dryer.mode === DryerMode.Auto && dryer.isRunning && (
-                <AIAutoStopCard
-                  aiPrediction={dryer.aiPrediction}
-                  aiLoading={dryer.aiLoading}
-                  aiAutoStopped={dryer.aiAutoStopped}
-                />
-              )}
-
               <TemperatureSlider
                 mode={dryer.mode}
                 temperature={dryer.temperature}
@@ -155,23 +132,12 @@ export default function ControlScreen() {
                 fan2Status={fan2Status}
                 fan2Loading={fan.fan2Loading || fan.bothLoading}
                 bothLoading={fan.bothLoading}
-                relayStatus={relayStatus}
-                relayLoading={relay.relayLoading}
                 heaterStatus={heaterStatus}
                 heaterLoading={heater.heaterLoading}
-                stepperLoading={stepper.stepperLoading}
-                stepperAction={stepper.stepperAction}
-                weightDisplay={weightDisplay}
                 onFan2On={() => fan.controlFan2('ON')}
                 onFan2Off={() => fan.controlFan2('OFF')}
                 onAllFansOn={() => fan.controlAllFans('ON')}
                 onAllFansOff={() => fan.controlAllFans('OFF')}
-                onStepperStart={stepper.stepperStart}
-                onStepperStop={stepper.stepperStop}
-                onStepperCW={stepper.stepperCW}
-                onStepperCCW={stepper.stepperCCW}
-                onRelayOn={relay.relayOn}
-                onRelayOff={relay.relayOff}
                 onHeaterOn={heater.heaterOn}
                 onHeaterOff={heater.heaterOff}
               />
@@ -188,46 +154,24 @@ function AdvancedControls({
   fan2Status,
   fan2Loading,
   bothLoading,
-  relayStatus,
-  relayLoading,
   heaterStatus,
   heaterLoading,
-  stepperLoading,
-  stepperAction,
-  weightDisplay,
   onFan2On,
   onFan2Off,
   onAllFansOn,
   onAllFansOff,
-  onStepperStart,
-  onStepperStop,
-  onStepperCW,
-  onStepperCCW,
-  onRelayOn,
-  onRelayOff,
   onHeaterOn,
   onHeaterOff,
 }: {
   fan2Status: 'ON' | 'OFF';
   fan2Loading: boolean;
   bothLoading: boolean;
-  relayStatus: 'ON' | 'OFF';
-  relayLoading: boolean;
   heaterStatus: 'ON' | 'OFF';
   heaterLoading: boolean;
-  stepperLoading: boolean;
-  stepperAction: 'START' | 'STOP' | 'CW' | 'CCW' | null;
-  weightDisplay: string;
   onFan2On: () => void;
   onFan2Off: () => void;
   onAllFansOn: () => void;
   onAllFansOff: () => void;
-  onStepperStart: () => void;
-  onStepperStop: () => void;
-  onStepperCW: () => void;
-  onStepperCCW: () => void;
-  onRelayOn: () => void;
-  onRelayOff: () => void;
   onHeaterOn: () => void;
   onHeaterOff: () => void;
 }) {
@@ -258,28 +202,6 @@ function AdvancedControls({
         </View>
       </View>
 
-      <View style={styles.controlBlock}>
-        <View style={styles.controlLabelRow}>
-          <Ionicons name="git-compare-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.controlLabel}>Stepper</Text>
-        </View>
-        <View style={styles.stepperGrid}>
-          <CommandButton label="START" active loading={stepperLoading && stepperAction === 'START'} onPress={onStepperStart} disabled={stepperLoading} />
-          <CommandButton label="STOP" danger loading={stepperLoading && stepperAction === 'STOP'} onPress={onStepperStop} disabled={stepperLoading} />
-          <CommandButton label="CW" loading={stepperLoading && stepperAction === 'CW'} onPress={onStepperCW} disabled={stepperLoading} />
-          <CommandButton label="CCW" loading={stepperLoading && stepperAction === 'CCW'} onPress={onStepperCCW} disabled={stepperLoading} />
-        </View>
-      </View>
-
-      <ToggleRow
-        icon="construct-outline"
-        label="Auger / Conveyor"
-        status={relayStatus}
-        loading={relayLoading}
-        onOn={onRelayOn}
-        onOff={onRelayOff}
-      />
-
       <ToggleRow
         icon="flame-outline"
         label="Heater"
@@ -288,16 +210,6 @@ function AdvancedControls({
         onOn={onHeaterOn}
         onOff={onHeaterOff}
       />
-
-      <View style={styles.weightCard}>
-        <View style={styles.weightIcon}>
-          <Ionicons name="scale-outline" size={20} color="#3B82F6" />
-        </View>
-        <View style={styles.weightTextBlock}>
-          <Text style={styles.weightLabel}>GRAIN WEIGHT</Text>
-          <Text style={styles.weightValue}>{weightDisplay} kg</Text>
-        </View>
-      </View>
     </View>
   );
 }
@@ -523,44 +435,7 @@ const styles = StyleSheet.create({
   commandButtonTextActive: {
     color: COLORS.white,
   },
-  stepperGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
   buttonDisabled: {
     opacity: 0.7,
-  },
-  weightCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.gray[100],
-  },
-  weightIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EFF6FF',
-  },
-  weightTextBlock: {
-    flex: 1,
-  },
-  weightLabel: {
-    ...IOS_TYPOGRAPHY.caption2,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  weightValue: {
-    ...IOS_TYPOGRAPHY.title3,
-    color: COLORS.textPrimary,
-    fontWeight: '700',
-    marginTop: 2,
   },
 });

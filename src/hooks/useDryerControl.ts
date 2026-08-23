@@ -6,11 +6,8 @@ import type { Device } from '@/api';
 import { useRealtimeSensor } from './useRealtimeSensor';
 import { useToastContext } from '@/context/ToastContext';
 import { useDryingSession } from '@/context/DryingSessionContext';
-import { runPrediction } from './useAIPrediction';
-import type { SensorInput } from './useAIPrediction';
-import type { AIPrediction } from './useAIPrediction';
 import { DRYING } from '@/utils/constants';
-import { DryerMode, StorageKeys } from '@/utils/enums';
+import { DryerMode, SensorThreshold, StorageKeys } from '@/utils/enums';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueueCommand } from '@/utils/commandQueue';
 
@@ -20,9 +17,6 @@ interface DryerControlState {
   temperature: number;
   fanSpeed: number;
   isControlling: boolean;
-  aiAutoStopped: boolean;
-  aiPrediction: AIPrediction | null;
-  aiLoading: boolean;
   syncingUntil: number | null;
   commandAck: boolean;
   commandTimeout: boolean;
@@ -53,9 +47,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const [temperature, setTemperature] = useState(55);
   const [fanSpeed, setFanSpeed] = useState(75);
   const [isControlling, setIsControlling] = useState(false);
-  const [aiAutoStopped, setAiAutoStopped] = useState(false);
-  const [aiPrediction, setAiPrediction] = useState<AIPrediction | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [syncingUntil, setSyncingUntil] = useState<number | null>(null);
   const [commandAck, setCommandAck] = useState(false);
   const [commandTimeout, setCommandTimeout] = useState(false);
@@ -66,7 +57,7 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   const [error, setError] = useState<string | null>(null);
 
   const deviceId = selectedDevice?.deviceId;
-  const { commandAcknowledged, isOnline: deviceOnline, runtimeState } = useRealtimeSensor(deviceId);
+  const { commandAcknowledged, isOnline: deviceOnline, runtimeState, sensorData } = useRealtimeSensor(deviceId);
 
   // Restore persisted state on mount
   useEffect(() => {
@@ -174,103 +165,42 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     }
   }, [optimisticRunning, runtimeState?.isRunning]);
 
-  // Apply AI action: adjust temperature/fan based on ML recommendation
-  const applyAIAction = useCallback(async (prediction: AIPrediction, currentTemp: number, currentFan: number) => {
-    if (!deviceId) return;
-    const action = prediction.action;
-    if (action === 'MAINTAIN' || action === 'STOP') return;
-
-    let newTemp = currentTemp;
-    let newFan = currentFan;
-
-    if (action === 'REDUCE_TEMP') {
-      newTemp = Math.max(35, currentTemp - 5);
-    } else if (action === 'INCREASE_TEMP') {
-      newTemp = Math.min(65, currentTemp + 5);
-    } else if (action === 'INCREASE_FAN') {
-      newFan = Math.min(100, currentFan + 15);
-    }
-
-    if (newTemp === currentTemp && newFan === currentFan) return;
-
-    setTemperature(newTemp);
-    setFanSpeed(newFan);
-
-    try {
-      await grainApi.dryer.start(deviceId, DryerMode.Auto, newTemp, newFan);
-    } catch { /* silent — next poll will retry */ }
-  }, [deviceId]);
-
-  // AI prediction polling in AUTO mode when running
+  // Rule-based AUTO adjustment using live DHT22 temperature/humidity.
+  // REDUCE_TEMP when too hot, INCREASE_TEMP when too cool, INCREASE_FAN when ambient humidity is high.
   useEffect(() => {
-    if (mode !== DryerMode.Auto || !isRunning || !deviceId) return;
+    if (mode !== DryerMode.Auto || !isRunning || !deviceId || !sensorData) return;
 
-    const fetchAIPrediction = async () => {
-      setAiLoading(true);
-      try {
-        const latest = await grainApi.sensors.getLatestData(deviceId);
-        const input: SensorInput = {
-          deviceId,
-          temperature: latest?.temperature ?? 65.5,
-          humidity: latest?.humidity ?? 50,
-          moisture: latest?.moisture ?? 20,
-          fanSpeed: latest?.fanSpeed ?? 75,
-          timeElapsed: 60,
-        };
-        try {
-          const result = await grainApi.ai.predict(input);
-          const prediction: AIPrediction = {
-            predictedMoisture30min: result.predictedMoisture30min,
-            estimatedMinutesToTarget: result.estimatedMinutesToTarget,
-            recommendation: result.recommendation,
-            recommendationType: result.recommendationType,
-            action: (result.action ?? 'MAINTAIN') as AIPrediction['action'],
-            efficiencyScore: result.efficiencyScore,
-            confidence: result.confidence,
-            isDryingComplete: result.isDryingComplete,
-            projectedMoistureCurve: result.projectedCurve,
-            targetMoisture: result.targetMoisture,
-            algorithm: result.algorithm,
-          };
-          setAiPrediction(prediction);
-          if (result.isDryingComplete && !aiAutoStopped) {
-            await autoStopDryer();
-          } else {
-            await applyAIAction(prediction, input.temperature, input.fanSpeed);
-          }
-        } catch {
-          const result = runPrediction(input);
-          setAiPrediction(result);
-          if (result.isDryingComplete && !aiAutoStopped) {
-            await autoStopDryer();
-          } else {
-            await applyAIAction(result, input.temperature, input.fanSpeed);
-          }
-        }
-      } catch {
-        // Sensor fetch failed
-      } finally {
-        setAiLoading(false);
+    const adjust = async () => {
+      const temp = sensorData.temperature;
+      const humidity = sensorData.humidity;
+
+      let newTemp = temperature;
+      let newFan = fanSpeed;
+
+      if (temp > SensorThreshold.HighTempRisk) {
+        newTemp = Math.max(35, temperature - 5);
+      } else if (temp < SensorThreshold.OptTempMin) {
+        newTemp = Math.min(65, temperature + 5);
       }
+
+      if (humidity > SensorThreshold.HumidityWarning && fanSpeed < 100) {
+        newFan = Math.min(100, fanSpeed + 15);
+      }
+
+      if (newTemp === temperature && newFan === fanSpeed) return;
+
+      setTemperature(newTemp);
+      setFanSpeed(newFan);
+
+      try {
+        await grainApi.dryer.start(deviceId, DryerMode.Auto, newTemp, newFan);
+      } catch { /* silent — next poll will retry */ }
     };
 
-    fetchAIPrediction();
-    const interval = setInterval(fetchAIPrediction, DRYING.AI_POLL_INTERVAL_MS);
+    adjust();
+    const interval = setInterval(adjust, DRYING.AI_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [mode, isRunning, deviceId, aiAutoStopped]);
-
-  const autoStopDryer = useCallback(async () => {
-    if (!deviceId) return;
-    setAiAutoStopped(true);
-    const ok = await sessionCtx.stopDrying('complete');
-    if (ok) {
-      showToast('Drying complete — dryer stopped by AI', 'success');
-    } else {
-      const msg = sessionCtx.error || 'Failed to auto-stop dryer';
-      setError(msg);
-      showToast(msg, 'error');
-    }
-  }, [deviceId, sessionCtx, showToast]);
+  }, [mode, isRunning, deviceId, sensorData, temperature, fanSpeed]);
 
   const handleStopDryer = useCallback(() => {
     if (isControlling || runtimeState?.pendingCommand) return;
@@ -326,7 +256,12 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     const deviceName = selectedDevice?.name || deviceId;
     Alert.alert(
       'Start Dryer',
-      `Start drying cycle?\n\nDevice: ${deviceName}\nMode: ${mode === DryerMode.Auto ? 'AI Auto' : 'Manual'}\n${mode === DryerMode.Manual ? `Temp: ${temperature.toFixed(1)}°C\nFan: ${fanSpeed}%` : 'AI will adjust settings automatically'}`,
+      `Start drying cycle?
+
+Device: ${deviceName}
+Mode: ${mode === DryerMode.Auto ? 'Auto' : 'Manual'}
+${mode === DryerMode.Manual ? `Temp: ${temperature.toFixed(1)}°C
+Fan: ${fanSpeed}%` : 'Settings will be adjusted automatically based on temperature and humidity'}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -337,7 +272,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
             setIsControlling(true);
             setCommandAck(false);
             setCommandTimeout(false);
-            setAiAutoStopped(false);
             setOptimisticRunning(true);
             setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
             try {
@@ -374,9 +308,6 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     temperature,
     fanSpeed,
     isControlling,
-    aiAutoStopped,
-    aiPrediction,
-    aiLoading,
     syncingUntil,
     commandAck,
     commandTimeout,

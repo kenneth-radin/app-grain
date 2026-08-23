@@ -104,8 +104,6 @@ export const NAVIGATION = [
 ];
 
 export const DRYING = {
-  TARGET_MOISTURE: 14,
-  MIN_MOISTURE: 10,
   STALE_THRESHOLD_MS: 5 * 60 * 1000,
   VERY_STALE_THRESHOLD_MS: 15 * 60 * 1000,
   AI_POLL_INTERVAL_MS: 60000,
@@ -136,4 +134,4 @@ export const DEFAULT_SETTINGS = {
 };
 
 // SENSOR_THRESHOLDS moved to SensorThreshold enum in enums.ts
-// Use SensorThreshold.MoistureTarget, SensorThreshold.MoistureMin, etc.
+// Use SensorThreshold.TempWarning, SensorThreshold.HumidityDanger, etc.

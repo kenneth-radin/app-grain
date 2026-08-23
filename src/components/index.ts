@@ -26,7 +26,6 @@ export { DeviceSelector } from './DeviceSelector';
 export { DryerModeSelector } from './DryerModeSelector';
 export { TemperatureSlider } from './TemperatureSlider';
 export { FanControlPanel } from './FanControlPanel';
-export { AIAutoStopCard } from './AIAutoStopCard';
 export { DryingAlertBanner } from './DryingAlertBanner';
 export { PasswordInput } from './PasswordInput';
 export { FilterPills } from './FilterPills';

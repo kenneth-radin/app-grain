@@ -4,7 +4,6 @@ export { useDevices } from './useDevices';
 export { useSensorData } from './useSensorData';
 export type { StalenessReason } from './useSensorData';
 export { useRealtimeSensor } from './useRealtimeSensor';
-export { useAIPrediction, runPrediction } from './useAIPrediction';
 export { useDryerControl } from './useDryerControl';
 export type { UseDryerControlReturn } from './useDryerControl';
 export { useFanControl } from './useFanControl';

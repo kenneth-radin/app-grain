@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 interface SensorCardProps {
-  type?: 'temperature' | 'humidity' | 'fanSpeed' | 'moisture' | 'energy' | 'weight';
+  type?: 'temperature' | 'humidity' | 'fanSpeed';
   value?: number | string;
   unit?: string;
   label?: string;
@@ -13,13 +13,11 @@ interface SensorCardProps {
   onPress?: () => void;
 }
 
+// DHT22 only — temperature and humidity cards (fanSpeed kept for control UI).
 const SENSOR_CONFIG: Record<string, { icon: IoniconName; color: string; bg: string; unit: string }> = {
   temperature: { icon: 'thermometer-outline', color: '#F97316', bg: '#FFF7ED', unit: '°C' },
   humidity: { icon: 'water-outline', color: '#22C55E', bg: '#F0FDF4', unit: '%' },
   fanSpeed: { icon: 'speedometer-outline', color: '#F97316', bg: '#FFF7ED', unit: '%' },
-  moisture: { icon: 'analytics-outline', color: '#22C55E', bg: '#F0FDF4', unit: '%' },
-  energy: { icon: 'flash-outline', color: '#22C55E', bg: '#F0FDF4', unit: 'kWh' },
-  weight: { icon: 'scale-outline', color: '#3B82F6', bg: '#EFF6FF', unit: 'kg' },
 };
 
 const STATUS_CONFIG = {

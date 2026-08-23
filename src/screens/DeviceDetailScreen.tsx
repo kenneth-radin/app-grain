@@ -141,17 +141,13 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   };
 
   // Calculate derived values and memoized values (must be before conditional returns)
-  const moisture = liveData?.moisture ?? 18.5;
+  // DHT22 only — temperature and humidity are the live sensor values.
   const temp = liveData?.temperature ?? 65.5;
   const humidity = liveData?.humidity ?? 42.3;
-  const energy = liveData?.energy ?? 2.4;
-  const fanSpeed = liveData?.fanSpeed ?? 75;
-  const weight = liveData?.weight;
   const status = rtOnline ? (liveData?.status ?? 'idle') : 'idle';
   const isOnline = Boolean(device && rtOnline);
   const isRunning = isOnline && (status === DryerStatus.Running || status === 'drying');
   const hasLiveData = isOnline && liveData !== null;
-  const targetM = DRYING.TARGET_MOISTURE;
 
   const isStale = useMemo(
     () => lastUpdated ? (Date.now() - lastUpdated.getTime()) > DRYING.STALE_THRESHOLD_MS : false,
@@ -164,8 +160,8 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   );
 
   const dryingAlert = useMemo(
-    () => analyzeDryingStatus(moisture, targetM, temp),
-    [moisture, targetM, temp],
+    () => analyzeDryingStatus(temp, humidity),
+    [temp, humidity],
   );
 
   // Fire local push notification when drying alert changes to non-normal
@@ -179,12 +175,8 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
   const sensors = useMemo(() => [
     { icon: 'thermometer-outline', val: staleVal ?? `${temp} °C`, label: 'TEMPERATURE', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'water-outline', val: staleVal ?? `${humidity} %`, label: 'HUMIDITY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'analytics-outline', val: staleVal ?? `${moisture} %`, label: 'MOISTURE', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'scale-outline', val: staleVal ?? (weight ? `${weight} kg` : '—'), label: 'GRAIN WEIGHT', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
-    { icon: 'flash-outline', val: staleVal ?? `${energy} kWh`, label: 'ENERGY', color: '#22C55E', bg: 'rgba(34,197,94,0.1)' },
-    { icon: 'speedometer-outline', val: staleVal ?? `${fanSpeed} %`, label: 'FAN SPEED', color: '#F97316', bg: 'rgba(249,115,22,0.1)' },
     { icon: 'pulse-outline', val: staleVal ?? status.toUpperCase(), label: 'STATUS', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
-  ], [staleVal, temp, humidity, moisture, weight, energy, fanSpeed, status]);
+  ], [staleVal, temp, humidity, status]);
 
   // Conditional returns must come after all hooks
   if (deviceLoading) {
@@ -249,17 +241,12 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           )}
 
           <GrainDryingSimulation
-            moisture={moisture}
             temperature={temp}
             humidity={humidity}
-            fanSpeed={fanSpeed}
             isRunning={isRunning}
             fan1State={runtimeState?.fan1State}
             fan2State={runtimeState?.fan2State}
             heaterState={runtimeState?.heaterState}
-            stepperState={runtimeState?.stepperState}
-            relayState={runtimeState?.relayState}
-            targetMoisture={targetM}
           />
 
           {/* Stale Data Warning — distinguish server offline vs sensor not sending */}
@@ -292,11 +279,11 @@ export default function DeviceDetailScreen({ deviceId }: DeviceDetailScreenProps
           </View>
 
           <View style={s.rowCards}>
-            <View style={s.halfCard}><Text style={s.cardLbl}>STATUS</Text><Text style={isRunning ? s.cardValGreen : s.cardVal}>{isRunning ? 'Running' : 'Idle'}</Text><Text style={s.cardSub}>Fan Speed: {fanSpeed} %</Text></View>
-            <View style={s.halfCard}><Text style={s.cardLbl}>MOISTURE</Text><Text style={s.cardVal}>{moisture} %</Text><Text style={s.cardSub}>Target: {targetM} %</Text></View>
+            <View style={s.halfCard}><Text style={s.cardLbl}>STATUS</Text><Text style={isRunning ? s.cardValGreen : s.cardVal}>{isRunning ? 'Running' : 'Idle'}</Text><Text style={s.cardSub}>{isOnline ? 'Connected to ESP32' : 'Device offline'}</Text></View>
+            <View style={s.halfCard}><Text style={s.cardLbl}>HUMIDITY</Text><Text style={s.cardVal}>{humidity} %</Text><Text style={s.cardSub}>Ambient RH</Text></View>
           </View>
 
-          <TouchableOpacity style={s.aiInsightsBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIPrediction); }} activeOpacity={0.7}>
+          <TouchableOpacity style={s.aiInsightsBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push(Routes.AIChatbot); }} activeOpacity={0.7}>
             <Ionicons name="sparkles" size={18} color="#22C55E" />
             <Text style={s.aiInsightsTxt}>AI Insights</Text>
             <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />

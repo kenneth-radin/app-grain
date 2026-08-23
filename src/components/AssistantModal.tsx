@@ -52,23 +52,23 @@ const QUICK: { en: string; fil: string }[] = [
 const FALLBACK: { keywords: string[]; en: string; fil: string }[] = [
   {
     keywords: ['auto', 'automatic', 'awtomatiko'],
-    en: 'Auto mode runs the AI control loop every 60s. It adjusts temperature and fan speed automatically using actions: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, or STOP when 14% moisture is reached.',
-    fil: 'Sa Auto mode, ang AI ay nag-a-adjust ng temperature at fan speed every 60 segundo: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, o STOP kapag naabot na ang 14%.',
+    en: 'Auto mode runs the AI control loop every 60s. It adjusts temperature and fan speed automatically using actions: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, or STOP when drying completes.',
+    fil: 'Sa Auto mode, ang AI ay nag-a-adjust ng temperature at fan speed every 60 segundo: MAINTAIN, REDUCE_TEMP, INCREASE_TEMP, INCREASE_FAN, o STOP kapag tapos na ang pagpapatuyo.',
   },
   {
-    keywords: ['14', 'target', 'moisture', 'safe storage', 'ligtas'],
-    en: '14% is the Philippine standard for safe rice storage. Above 14% risks mold and spoilage. Below 12% causes grain cracking.',
-    fil: 'Ang 14% ang Philippine standard para sa ligtas na imbakan. Kung mataas pa, may panganib na amag. Kung mababa sa 12%, mag-crack ang butil.',
+    keywords: ['14', 'target', 'safe storage', 'ligtas'],
+    en: '14% moisture content is the Philippine standard for safe rice storage — used as a reference goal for drying. Above 14% risks mold and spoilage. Below 12% causes grain cracking.',
+    fil: 'Ang 14% moisture content ang Philippine standard para sa ligtas na imbakan — ginagamit bilang reference goal sa pagpapatuyo. Kung mataas pa, may panganib na amag. Kung mababa sa 12%, mag-crack ang butil.',
   },
   {
-    keywords: ['sensor', 'temperature', 'humidity', 'moisture sensor'],
-    en: 'Sensors: DHT22 (temp + humidity), Capacitive sensor (grain moisture %), Load cell + HX711 (weight kg), INA219 (energy kWh), Solar voltage monitor. All connected to ESP32.',
-    fil: 'Mga sensor: DHT22 (temp + humidity), Capacitive sensor (grain moisture %), Load cell + HX711 (timbang kg), INA219 (enerhiya kWh), Solar voltage. Lahat nakakonekta sa ESP32.',
+    keywords: ['sensor', 'temperature', 'humidity'],
+    en: 'Sensor: DHT22 (temperature + humidity) connected to the ESP32. It sends live readings every few seconds so you can monitor drying conditions in real time.',
+    fil: 'Sensor: DHT22 (temperatura + humidity) na nakakonekta sa ESP32. Nagpapadala ito ng live readings kada ilang segundo para ma-monitor mo ang kondisyon ng pagpapatuyo sa real time.',
   },
   {
     keywords: ['session', 'start', 'simula', 'how to'],
-    en: 'Start a session: Sessions tab → "Start Session" → select device → choose grain type → set target moisture (14%) → tap Start. Auto-completes when moisture target is reached.',
-    fil: 'Mag-start ng session: Sessions tab → "Start Session" → piliin ang device → uri ng butil → target moisture (14%) → i-tap ang Start. Awtomatikong natatapos kapag naabot ang target.',
+    en: 'Start a session: Sessions tab → "Start Session" → select device → choose grain type → tap Start. You can end the session anytime with Complete or Abort.',
+    fil: 'Mag-start ng session: Sessions tab → "Start Session" → piliin ang device → uri ng butil → i-tap ang Start. Maaari mong tapusin anumang oras gamit ang Complete o Abort.',
   },
 ];
 
@@ -80,8 +80,8 @@ function fallbackReply(input: string, lang: Language): string {
     }
   }
   return lang === 'en'
-    ? 'The AI service is temporarily unavailable. Try asking about: Auto mode, target moisture, sensors, or how to start a session.'
-    : 'Hindi maabot ang AI service ngayon. Subukan magtanong tungkol sa: Auto mode, target moisture, sensors, o paano mag-start ng session.';
+    ? 'The AI service is temporarily unavailable. Try asking about: Auto mode, safe storage targets, sensors, or how to start a session.'
+    : 'Hindi maabot ang AI service ngayon. Subukan magtanong tungkol sa: Auto mode, ligtas na imbakan, mga sensor, o paano mag-start ng session.';
 }
 
 // ─── Fetch live sensor data from Firebase ─────────────────────────────────────
