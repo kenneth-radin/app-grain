@@ -159,7 +159,7 @@ class GrainApiClient {
   private baseURL: string
 
   constructor(baseURL?: string) {
-    this.baseURL = baseURL || process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api'
+    this.baseURL = baseURL || process.env.EXPO_PUBLIC_API_URL || 'https://backend-grain.onrender.com/api'
 
     this.client = axios.create({
       baseURL: this.baseURL,
@@ -814,7 +814,7 @@ class GrainApiClient {
   getBaseURL = (): string => this.baseURL
 }
 
-export const grainApi = new GrainApiClient(process.env.EXPO_PUBLIC_API_URL || 'https://grain-web-admin.onrender.com/api')
+export const grainApi = new GrainApiClient(process.env.EXPO_PUBLIC_API_URL || 'https://backend-grain.onrender.com/api')
 
 /** Returns true if the error is a network/connectivity error (not a server response like 401).
  *  Also treats HTTP 500/502/503 as server-unavailable — Render returns these during cold starts or crashes. */
