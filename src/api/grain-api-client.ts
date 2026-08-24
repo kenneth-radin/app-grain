@@ -454,6 +454,16 @@ class GrainApiClient {
     getCurrentUser: async (): Promise<User> => {
       return this.auth.me()
     },
+
+    forgot: async (email: string): Promise<{ message: string; resetToken?: string; resetUrl?: string }> => {
+      const response = await this.client.post('/auth/forgot', { email })
+      return response.data.data || response.data
+    },
+
+    reset: async (token: string, password: string): Promise<{ message: string }> => {
+      const response = await this.client.post('/auth/reset', { token, password })
+      return response.data.data || response.data
+    },
   }
 
   // ─── Devices ──────────────────────────────────────────────

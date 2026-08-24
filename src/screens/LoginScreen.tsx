@@ -205,7 +205,7 @@ export default function LoginScreen() {
                 {passwordError ? <Text style={styles.inlineError}>{passwordError}</Text> : null}
               </View>
 
-              <TouchableOpacity onPress={() => Alert.alert('Forgot Password', 'Password reset is not yet available. Please contact support.')} style={styles.forgotLink} activeOpacity={0.7}>
+                            <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password')} style={styles.forgotLink} activeOpacity={0.7}>
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
 

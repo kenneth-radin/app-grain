@@ -1,0 +1,191 @@
+import { StyleSheet, Platform } from 'react-native';
+
+export const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  backgroundGradient: { ...StyleSheet.absoluteFillObject },
+  kbContainer: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  icon: {
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    color: '#111111',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: '#6B7280',
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  inputGroup: {
+    gap: 6,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontWeight: '600',
+    color: '#111111',
+  },
+  input: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 17,
+    color: '#111111',
+  },
+  inputError: {
+    borderColor: '#EF4444',
+  },
+  inlineError: {
+    color: '#EF4444',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  pwWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  pwInput: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 17,
+    color: '#111111',
+  },
+  eyeBtn: {
+    padding: 4,
+  },
+  submitting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  submittingText: {
+    color: '#6B7280',
+  },
+  button: {
+    backgroundColor: '#22C55E',
+    borderRadius: 50,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buttonDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowOpacity: 0,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+  },
+    backBtn: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  backBtnText: {
+    color: '#22C55E',
+  },
+    iconContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tokenBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  tokenLabel: {
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  tokenText: {
+    fontSize: 14,
+    color: '#111111',
+    marginBottom: 12,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  copyButton: {
+    backgroundColor: '#22C55E',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  copyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  urlBox: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  urlLabel: {
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  urlText: {
+    fontSize: 12,
+    color: '#111111',
+    textAlign: 'center',
+  },
+  nextButton: {
+    backgroundColor: '#22C55E',
+    borderRadius: 50,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  nextButtonText: {
+    color: '#FFFFFF',
+  },
+  inputContainer: {
+    gap: 6,
+    marginBottom: 16,
+  },
+});
