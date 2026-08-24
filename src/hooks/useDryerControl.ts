@@ -226,15 +226,16 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
               showToast('Dryer stopped successfully', 'success');
             } else {
               const msg = sessionCtx.error || 'Failed to stop dryer';
-              if (isNetworkError({ status: 0 })) {
-                setOptimisticRunning(null);
-                await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
-                showToast('Offline — stop command queued', 'warning');
-              } else {
-                setOptimisticRunning(null);
-                showToast(msg, 'error');
-              }
+              // Failure (server said no): KEEP showing RUNNING so the user can retry STOP -
+              // the physical dryer is still running until a real STOP lands.
+              setOptimisticRunning(true);
+              showToast(String(msg || 'Failed to stop dryer'), 'error');
             }
+          } catch (err) {
+            // Transport-level failure: queue the stop for the offline flusher.
+            setOptimisticRunning(null);
+            await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
+            showToast('Connection issue - stop command queued', 'warning');
           } finally {
             setIsControlling(false);
           }
@@ -290,9 +291,12 @@ Fan: ${fanSpeed}%` : 'Settings will be adjusted automatically based on temperatu
                   showToast('Offline — start command queued', 'warning');
                 } else {
                   setOptimisticRunning(null);
-                  showToast(msg, 'error');
+                  showToast(String(msg || 'Failed to stop dryer'), 'error');
                 }
               }
+            } catch (err) {
+              setOptimisticRunning(null);
+              showToast(err instanceof Error ? err.message : 'Failed to start dryer', 'error');
             } finally {
               setIsControlling(false);
             }
