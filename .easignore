@@ -1,0 +1,33 @@
+# EAS ignore file - files/dirs excluded from the EAS Build upload archive.
+# Pattern: treated like .gitignore.
+
+# Node / deps get reinstalled on the EAS build server
+node_modules/
+
+# Local build/export output
+dist/
+.export-test/
+.expo/
+
+# Environment secrets - never upload
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Stray diagnostics/temp files
+config.txt
+doctor.txt
+export.txt
+tsc-errors.txt
+dev.bat
+start.bat
+
+# Local APK artifact + icon backup
+grain-preview.apk
+assets/icon.png.jpg.bak
+
+# Logs
+*.log
+npm-debug.log*

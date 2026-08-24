@@ -1,5 +1,4 @@
 {
-  "buildIdentifier": "default",
   "cli": {
     "version": ">= 13.2.0"
   },
@@ -13,7 +12,9 @@
     },
     "preview": {
       "distribution": "internal",
-      "buildType": "apk",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
       }
