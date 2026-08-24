@@ -111,7 +111,7 @@ export default function ForgotPasswordScreen() {
       <LinearGradientCompat colors={GRADIENTS.login} style={styles.backgroundGradient} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kbContainer}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <Image source={require('@/assets/icon.png')} style={styles.logo} resizeMode="contain" />
+          <Image source={require('../../assets/icon.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.card}>
             <Text style={[IOS_TYPOGRAPHY.title2, styles.title]}>Forgot Password?</Text>
             <Text style={[IOS_TYPOGRAPHY.body, styles.subtitle]}>
