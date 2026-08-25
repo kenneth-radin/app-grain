@@ -24,12 +24,19 @@ export type UseFanControlReturn = FanControlState & {
   error: string | null;
 };
 
+interface DeviceRuntimeHints {
+  fan1State?: string;
+  fan2State?: string;
+  pendingCommand?: string | null;
+}
+
 export function useFanControl(
   deviceId: string | undefined,
   syncingUntil: number | null,
   setSyncingUntil: (ms: number | null) => void,
   commandAck = false,
   commandTimeout = false,
+  runtimeState?: DeviceRuntimeHints | null,
 ): UseFanControlReturn {
   const { showToast } = useToastContext();
 
@@ -58,6 +65,18 @@ export function useFanControl(
       }
     })();
   }, []);
+
+  // Sync local toggles from the device's actual relay state (Firebase runtimeState).
+  // Skipped while a command is in flight so optimistic UI is not clobbered.
+  useEffect(() => {
+    if (inFlightRef.current || optimisticRef.current) return;
+    if (runtimeState?.pendingCommand) return;
+    const f1 = runtimeState?.fan1State;
+    const f2 = runtimeState?.fan2State;
+    if ((f1 === 'ON' || f1 === 'OFF') && f1 !== fan1Status) setFan1Status(f1);
+    if ((f2 === 'ON' || f2 === 'OFF') && f2 !== fan2Status) setFan2Status(f2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtimeState?.fan1State, runtimeState?.fan2State, runtimeState?.lastHeartbeat]);
 
   // Persist fan state on change
   useEffect(() => {

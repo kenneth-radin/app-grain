@@ -15,11 +15,17 @@ export type UseHeaterControlReturn = HeaterControlState & {
   error: string | null;
 };
 
+interface HeaterRuntimeHints {
+  heaterState?: string;
+  pendingCommand?: string | null;
+}
+
 export function useHeaterControl(
   deviceId: string | undefined,
   setSyncingUntil?: (ms: number | null) => void,
   commandAck = false,
   commandTimeout = false,
+  runtimeState?: HeaterRuntimeHints | null,
 ): UseHeaterControlReturn {
   const { showToast } = useToastContext();
   const [heaterStatus, setHeaterStatus] = useState<'ON' | 'OFF'>('OFF');
@@ -46,6 +52,15 @@ export function useHeaterControl(
       inFlightRef.current = false;
     }
   }, [commandTimeout]);
+
+  // Sync local toggle from the device's actual heater state (Firebase runtimeState).
+  useEffect(() => {
+    if (inFlightRef.current || optimisticRef.current) return;
+    if (runtimeState?.pendingCommand) return;
+    const h = runtimeState?.heaterState;
+    if (h === 'ON' || h === 'OFF') setHeaterStatus(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runtimeState?.heaterState, runtimeState?.lastHeartbeat]);
 
   const handleHeaterControl = useCallback(async (action: 'ON' | 'OFF') => {
     if (!deviceId) return;
