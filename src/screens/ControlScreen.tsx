@@ -43,9 +43,9 @@ export default function ControlScreen() {
   const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
 
   const deviceId = dryer.selectedDevice?.deviceId;
-  const fan1Status = runtimeState?.fan1State ?? fan.fan1Status;
-  const fan2Status = runtimeState?.fan2State ?? fan.fan2Status;
-  const heaterStatus = runtimeState?.heaterState ?? heater.heaterStatus;
+  const fan1Status = ((runtimeState?.fan1State as 'ON' | 'OFF' | undefined) ?? fan.fan1Status) || 'OFF';
+  const fan2Status = ((runtimeState?.fan2State as 'ON' | 'OFF' | undefined) ?? fan.fan2Status) || 'OFF';
+  const heaterStatus = ((runtimeState?.heaterState as 'ON' | 'OFF' | undefined) ?? heater.heaterStatus) || 'OFF';
   const selectedDeviceId = dryer.selectedDevice?.deviceId;
   const setSelectedDevice = dryer.setSelectedDevice;
 
