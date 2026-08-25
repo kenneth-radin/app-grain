@@ -156,7 +156,12 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
   }, [commandAck, syncingUntil]);
 
   // Derive isRunning from shared context — true when context has an active session for this device
-  const actualRunning = Boolean(runtimeState?.isRunning || (sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId));
+  // Hardware-reported state (S:running|idle from the UNO, mirrored to Firebase)
+  // is ground truth whenever we have live sensor data.
+  const hwRunning = sensorData ? sensorData.status === 'running' : null;
+  const actualRunning = hwRunning !== null
+    ? hwRunning
+    : Boolean(runtimeState?.isRunning || (sessionCtx.isRunning && sessionCtx.activeDeviceId === deviceId));
   const isRunning = optimisticRunning ?? actualRunning;
 
   useEffect(() => {
