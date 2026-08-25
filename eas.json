@@ -7,7 +7,15 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBabUmPmRhZMOaNE3l7APbVMEKSTADZuGc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "grain-app-35c11.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://grain-app-35c11-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "grain-app-35c11",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "grain-app-35c11.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "671935281230",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:671935281230:web:c955b7046f12966a6bab1f",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-CFC8M8M6C5"
       }
     },
     "preview": {
@@ -16,12 +24,28 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBabUmPmRhZMOaNE3l7APbVMEKSTADZuGc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "grain-app-35c11.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://grain-app-35c11-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "grain-app-35c11",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "grain-app-35c11.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "671935281230",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:671935281230:web:c955b7046f12966a6bab1f",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-CFC8M8M6C5"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://backend-grain.onrender.com/api",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBabUmPmRhZMOaNE3l7APbVMEKSTADZuGc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "grain-app-35c11.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://grain-app-35c11-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "grain-app-35c11",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "grain-app-35c11.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "671935281230",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:671935281230:web:c955b7046f12966a6bab1f",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-CFC8M8M6C5"
       }
     }
   }
