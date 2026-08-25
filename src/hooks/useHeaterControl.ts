@@ -17,6 +17,7 @@ export type UseHeaterControlReturn = HeaterControlState & {
 
 interface HeaterRuntimeHints {
   heaterState?: string;
+  lastHeartbeat?: number;
   pendingCommand?: string | null;
 }
 

@@ -27,6 +27,7 @@ export type UseFanControlReturn = FanControlState & {
 interface DeviceRuntimeHints {
   fan1State?: string;
   fan2State?: string;
+  lastHeartbeat?: number;
   pendingCommand?: string | null;
 }
 
