@@ -29,6 +29,7 @@ export default function AppLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="device/[id]" />
+                    <Stack.Screen name="admin" />
           <Stack.Screen name="add-device" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </ErrorBoundary>

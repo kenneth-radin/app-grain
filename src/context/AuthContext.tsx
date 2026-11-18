@@ -71,7 +71,7 @@ interface AuthContextType {
   reconnectMessage: string | null;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<string>;
   logout: () => Promise<void>;
   clearError: () => void;
   updateProfile: (data: ProfileUpdateData) => Promise<void>;
@@ -87,7 +87,7 @@ const AuthContext = createContext<AuthContextType>({
   reconnectMessage: null,
   error: null,
   login: async () => {},
-  register: async () => {},
+  register: async () => '',
   logout: async () => {},
   clearError: () => {},
   updateProfile: async () => {},
@@ -200,11 +200,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
+  const register = useCallback(async (name: string, email: string, password: string): Promise<string> => {
     dispatch({ type: 'AUTH_START' });
     try {
-      const { user } = await grainApi.auth.register(name, email, password);
-      dispatch({ type: 'AUTH_SUCCESS', payload: user });
+      const { message } = await grainApi.auth.register(name, email, password);
+      dispatch({ type: 'SET_LOADING', payload: false });
+      return message;
     } catch (error: any) {
       const message = error?.message || 'Registration failed';
       dispatch({ type: 'AUTH_ERROR', payload: message });

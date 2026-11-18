@@ -3,16 +3,18 @@
     "name": "grAIn",
     "slug": "grAIn-fe",
     "scheme": "grain",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "platforms": [
       "ios",
       "android"
     ],
     "ios": {
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "buildNumber": "2"
     },
     "android": {
       "package": "com.sdca.grain",
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,6 +32,13 @@
           "faceIDPermission": "Allow $(PRODUCT_NAME) to access your face ID"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b2be388e-a28c-484e-94b2-49772171b39a"
+      }
+    },
+    "owner": "kennn9"
   }
 }

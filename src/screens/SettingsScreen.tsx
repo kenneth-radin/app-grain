@@ -225,6 +225,20 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          {user?.role === 'admin' && (
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/(app)/admin' as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Admin console</Text>
+              <Text style={styles.settingDesc}>Manage users and device ownership</Text>
+            </View>
+            <Ionicons name="shield-checkmark-outline" size={20} color="#22C55E" />
+          </TouchableOpacity>
+        )}
+
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogoutPress} activeOpacity={0.7}>
             <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
             <Text style={styles.logoutButtonText}>Logout</Text>

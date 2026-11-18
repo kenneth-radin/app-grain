@@ -189,6 +189,41 @@ export interface ApiResponse<T> {
   timestamp: string
 }
 
+// ─── Admin Types (matching backend adminRoutes.ts) ─────────
+
+export interface AdminUser {
+  _id: string
+  name: string
+  email: string
+  role: 'farmer' | 'admin'
+  emailVerified: boolean
+  createdAt: string
+}
+
+export interface AdminDevice {
+  deviceId: string
+  name: string
+  status: string
+  ownerId: string | null
+  owner: { name: string; email: string } | null
+}
+
+export interface AdminPagination {
+  total: number
+  page: number
+  limit: number
+  totalPages: number
+}
+
+export interface AdminPaginatedResponse<T> {
+  data: T[]
+  pagination: AdminPagination
+}
+
+export interface AdminTransferResponse {
+  device: AdminDevice & { _id: string }
+}
+
 // ─── API Client ───────────────────────────────────────────────
 
 const TOKEN_KEY = StorageKeys.AuthToken
@@ -415,17 +450,16 @@ class GrainApiClient {
       throw new Error('Invalid login response')
     },
 
-    register: async (name: string, email: string, password: string, role: string = UserRole.Farmer): Promise<{ token: string; user: User }> => {
-      const response = await this.client.post<ApiResponse<{ user: User; accessToken: string }>>(
+    register: async (name: string, email: string, password: string): Promise<{ message: string }> => {
+      const response = await this.client.post<ApiResponse<{ message: string }>>(
         '/auth/register',
-        { name, email, password, role }
+        { name, email, password }
       )
-      const payload = (response.data.data || response.data) as { user: User; accessToken: string } | undefined
-      if (payload?.accessToken && payload?.user) {
-        await this.setStoredToken(payload.accessToken)
-        return { token: payload.accessToken, user: payload.user }
+      const payload = (response.data.data || response.data) as { message: string } | undefined
+      if (payload?.message) {
+        return { message: payload.message }
       }
-      throw new Error('Invalid register response')
+      throw new Error(payload?.message || 'Registration failed')
     },
 
     me: async (timeoutMs?: number): Promise<User> => {
@@ -899,6 +933,54 @@ class GrainApiClient {
       } catch {
         return false
       }
+    },
+  }
+
+  // ─── Admin ────────────────────────────────────────────────
+
+  admin = {
+    listUsers: async (
+      page: number,
+      limit: number
+    ): Promise<AdminPaginatedResponse<AdminUser>> => {
+      const response = await this.client.get<ApiResponse<AdminPaginatedResponse<AdminUser>>>(
+        '/admin/users',
+        { params: { page, limit } }
+      )
+      const data = response.data.data
+      if (data && data.data) {
+        return data
+      }
+      throw new Error('Invalid users response')
+    },
+
+    listDevices: async (
+      page: number,
+      limit: number
+    ): Promise<AdminPaginatedResponse<AdminDevice>> => {
+      const response = await this.client.get<ApiResponse<AdminPaginatedResponse<AdminDevice>>>(
+        '/admin/devices',
+        { params: { page, limit } }
+      )
+      const data = response.data.data
+      if (data && data.data) {
+        return data
+      }
+      throw new Error('Invalid devices response')
+    },
+
+    transferDeviceOwner: async (
+      deviceId: string,
+      ownerId: string
+    ): Promise<AdminTransferResponse> => {
+      const response = await this.client.patch<ApiResponse<AdminTransferResponse>>(
+        `/admin/devices/${deviceId}/owner`,
+        { ownerId }
+      )
+      if (response.data.data) {
+        return response.data.data
+      }
+      throw new Error('Invalid transfer response')
     },
   }
 

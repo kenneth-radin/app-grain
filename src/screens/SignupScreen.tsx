@@ -69,10 +69,11 @@ export default function SignupScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsLoading(true);
     try {
-      await grainApi.auth.register(name.trim(), email.trim(), password.trim());
-      await login(email.trim(), password.trim());
+      const { message } = await grainApi.auth.register(name.trim(), email.trim(), password.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(app)/dashboard');
+      Alert.alert('Account created', message, [
+        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+      ]);
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const status = err?.status;

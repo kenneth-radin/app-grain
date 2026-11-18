@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Prediction, PredictionRecommendation, PredictionStatus } from '@/api';
@@ -25,21 +25,46 @@ const STATUS_LABEL: Record<PredictionStatus, string> = {
   estimated_complete: 'Target reached',
 };
 
-function formatRemaining(minutes: number): string {
-  if (minutes <= 0) return 'Now';
-  if (minutes < 60) return `${Math.round(minutes)} min`;
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
 /** AI drying-time prediction card fed by the backend's /api/predictions endpoint. */
 export default function PredictionCard({ prediction }: PredictionCardProps) {
+  // Live countdown: recompute seconds-remaining from estimatedCompletionAt every
+  // second so the card ticks down without hammering the server. The hook already
+  // re-fetches the real prediction every 60s to re-anchor this estimate.
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    prediction ? Math.max(0, Math.floor((new Date(prediction.estimatedCompletionAt).getTime() - Date.now()) / 1000)) : 0
+  );
+
+  useEffect(() => {
+    if (!prediction || prediction.status === 'estimated_complete') {
+      setSecondsLeft(0);
+      return;
+    }
+    const update = () => {
+      setSecondsLeft(Math.max(0, Math.floor((new Date(prediction.estimatedCompletionAt).getTime() - Date.now()) / 1000)));
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [prediction]);
+
   if (!prediction) return null;
 
   const meta = RECOMMENDATION_META[prediction.recommendation];
   const eta = new Date(prediction.estimatedCompletionAt);
   const isComplete = prediction.status === 'estimated_complete';
+  const remaining = isComplete ? 0 : secondsLeft <= 0 && prediction.remainingMinutes > 0
+    // Fallback to backend's last estimate if client clock drifts past it
+    ? prediction.remainingMinutes * 60
+    : secondsLeft;
+
+  const formatSeconds = (totalSeconds: number): string => {
+    const s = Math.max(0, Math.round(totalSeconds));
+    if (s < 60) return `${s}s`;
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${s % 60}s`;
+  };
 
   return (
     <View style={styles.card}>
@@ -55,7 +80,7 @@ export default function PredictionCard({ prediction }: PredictionCardProps) {
 
       <View style={styles.bodyRow}>
         <View style={styles.mainCol}>
-          <Text style={styles.remainingVal}>{isComplete ? 'Complete' : formatRemaining(prediction.remainingMinutes)}</Text>
+          <Text style={styles.remainingVal}>{isComplete ? 'Complete' : formatSeconds(remaining)}</Text>
           <Text style={styles.remainingLbl}>{isComplete ? 'target condition reached' : 'estimated time remaining'}</Text>
         </View>
         <View style={[styles.recoChip, { backgroundColor: meta.bg }]}>
