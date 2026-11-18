@@ -27,20 +27,33 @@ export default function ControlScreen() {
   const serverCtx = useServerStatusContext();
 
   const dryer = useDryerControl(devices, devicesLoading);
+  const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
   const fan = useFanControl(
     dryer.selectedDevice?.deviceId,
     dryer.syncingUntil,
     dryer.setSyncingUntil,
     dryer.commandAck,
     dryer.commandTimeout,
+    runtimeState,
   );
   const heater = useHeaterControl(
     dryer.selectedDevice?.deviceId,
     dryer.setSyncingUntil,
     dryer.commandAck,
     dryer.commandTimeout,
+    runtimeState,
   );
-  const { sensorData, runtimeState } = useRealtimeSensor(dryer.selectedDevice?.deviceId);
+
+  // MANUAL start turns both fans + heater ON on the device — keep the button
+  // toggles in sync with that behaviour.
+  const prevRunningRef = React.useRef(false);
+  useEffect(() => {
+    if (dryer.isRunning && !prevRunningRef.current && dryer.mode === DryerMode.Manual) {
+      fan.presetStates('ON', 'ON');
+      heater.preset('ON');
+    }
+    prevRunningRef.current = dryer.isRunning;
+  }, [dryer.isRunning, dryer.mode, fan.presetStates, heater.preset]);
 
   const deviceId = dryer.selectedDevice?.deviceId;
   const fan1Status = ((runtimeState?.fan1State as 'ON' | 'OFF' | undefined) ?? fan.fan1Status) || 'OFF';

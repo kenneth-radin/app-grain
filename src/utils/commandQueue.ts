@@ -50,7 +50,9 @@ export async function flushQueue(): Promise<void> {
   let sentCount = 0
   for (const cmd of queue) {
     try {
-      if (cmd.type === 'start') await grainApi.dryer.start(cmd.deviceId, cmd.payload.mode as any, cmd.payload.temperature as number | undefined, cmd.payload.fanSpeed as number | undefined)
+      if (cmd.type === 'start') {
+        await grainApi.dryer.start(cmd.deviceId, cmd.payload.mode as any, cmd.payload.temperature as number | undefined, cmd.payload.fanSpeed as number | undefined)
+      }
       if (cmd.type === 'stop') await grainApi.dryer.stop(cmd.deviceId)
       if (cmd.type === 'fan_control') await grainApi.dryer.controlFan(cmd.deviceId, cmd.payload.fan as any, cmd.payload.action as any)
       sentCount++

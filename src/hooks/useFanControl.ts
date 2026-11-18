@@ -19,6 +19,7 @@ export type UseFanControlReturn = FanControlState & {
   controlFan2: (action: 'ON' | 'OFF') => Promise<void>;
   controlAllFans: (action: 'ON' | 'OFF') => Promise<void>;
   handleFanControl: (fan: 'FAN1' | 'FAN2' | 'ALL', action: 'ON' | 'OFF') => Promise<void>;
+  presetStates: (fan1: 'ON' | 'OFF', fan2: 'ON' | 'OFF') => void;
   setSyncingUntil: (ms: number | null) => void;
   isLoading: boolean;
   error: string | null;
@@ -30,6 +31,8 @@ interface DeviceRuntimeHints {
   lastHeartbeat?: number;
   pendingCommand?: string | null;
 }
+
+const PENDING_COMMAND_STALE_MS = 15000;
 
 export function useFanControl(
   deviceId: string | undefined,
@@ -49,6 +52,27 @@ export function useFanControl(
   const [error, setError] = useState<string | null>(null);
   const inFlightRef = useRef(false);
   const optimisticRef = useRef<{ fan1: 'ON' | 'OFF'; fan2: 'ON' | 'OFF' } | null>(null);
+  const pendingSinceRef = useRef<number | null>(null);
+  // Safety net: if the device never ACKs (and the shared commandTimeout never
+  // fires), clear loading + unblock buttons anyway so the UI can't hang forever.
+  const FALLBACK_CLEAR_MS = 15000;
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFallbackTimer = useCallback(() => {
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+  }, []);
+
+  const forceClearLoading = useCallback(() => {
+    setFan1Loading(false);
+    setFan2Loading(false);
+    setBothLoading(false);
+    inFlightRef.current = false;
+  }, []);
+
+  useEffect(() => () => clearFallbackTimer(), [clearFallbackTimer]);
 
   // Restore persisted fan state on mount
   useEffect(() => {
@@ -62,22 +86,48 @@ export function useFanControl(
         if (map[StorageKeys.ControlFan1Status]) setFan1Status(map[StorageKeys.ControlFan1Status] as 'ON' | 'OFF');
         if (map[StorageKeys.ControlFan2Status]) setFan2Status(map[StorageKeys.ControlFan2Status] as 'ON' | 'OFF');
       } catch {
-        // Silent — state will use defaults
+        // Silent â€” state will use defaults
       }
     })();
   }, []);
 
   // Sync local toggles from the device's actual relay state (Firebase runtimeState).
-  // Skipped while a command is in flight so optimistic UI is not clobbered.
+  // Skipped while a command is in flight so optimistic UI is not clobbered, and
+  // while a pendingCommand is fresh (device busy). A stale pendingCommand must
+  // never block syncing permanently.
   useEffect(() => {
+    if (runtimeState?.pendingCommand) {
+      if (pendingSinceRef.current === null) pendingSinceRef.current = Date.now();
+    } else {
+      pendingSinceRef.current = null;
+    }
+    const pendingFresh =
+      !!runtimeState?.pendingCommand &&
+      pendingSinceRef.current !== null &&
+      Date.now() - pendingSinceRef.current < PENDING_COMMAND_STALE_MS;
+
+    // Once the device reports state matching what we optimistically set,
+    // release the optimistic hold so future remote changes can sync through.
+    if (!pendingFresh && !inFlightRef.current && optimisticRef.current) {
+      const reported = runtimeState?.fan1State != null || runtimeState?.fan2State != null;
+      const matches =
+        (runtimeState?.fan1State == null || runtimeState.fan1State === fan1Status) &&
+        (runtimeState?.fan2State == null || runtimeState.fan2State === fan2Status);
+      if (reported && matches) {
+        optimisticRef.current = null;
+      }
+    }
+
     if (inFlightRef.current || optimisticRef.current) return;
-    if (runtimeState?.pendingCommand) return;
+    if (pendingFresh) return;
     const f1 = runtimeState?.fan1State;
     const f2 = runtimeState?.fan2State;
     if ((f1 === 'ON' || f1 === 'OFF') && f1 !== fan1Status) setFan1Status(f1);
     if ((f2 === 'ON' || f2 === 'OFF') && f2 !== fan2Status) setFan2Status(f2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runtimeState?.fan1State, runtimeState?.fan2State, runtimeState?.lastHeartbeat]);
+  }, [runtimeState?.fan1State, runtimeState?.fan2State, runtimeState?.lastHeartbeat, runtimeState?.pendingCommand]);
+
+
 
   // Persist fan state on change
   useEffect(() => {
@@ -90,12 +140,13 @@ export function useFanControl(
   useEffect(() => {
     if (commandAck) {
       optimisticRef.current = null;
+      clearFallbackTimer();
       setFan1Loading(false);
       setFan2Loading(false);
       setBothLoading(false);
       inFlightRef.current = false;
     }
-  }, [commandAck]);
+  }, [commandAck, clearFallbackTimer]);
 
   useEffect(() => {
     if (commandTimeout && optimisticRef.current) {
@@ -104,12 +155,13 @@ export function useFanControl(
       optimisticRef.current = null;
     }
     if (commandTimeout) {
+      clearFallbackTimer();
       setFan1Loading(false);
       setFan2Loading(false);
       setBothLoading(false);
       inFlightRef.current = false;
     }
-  }, [commandTimeout]);
+  }, [commandTimeout, clearFallbackTimer]);
 
   const handleFanControl = useCallback(async (fan: 'FAN1' | 'FAN2' | 'ALL', action: 'ON' | 'OFF') => {
     if (!deviceId) return;
@@ -130,7 +182,15 @@ export function useFanControl(
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const label = fan === 'ALL' ? 's' : fan === 'FAN1' ? '1' : '2';
       showToast(`Fan ${label} turned ${action.toLowerCase()}`, 'success');
+      // Safety net: even if the device never ACKs, stop showing loading and
+      // re-enable the buttons after a fixed window.
+      clearFallbackTimer();
+      fallbackTimerRef.current = setTimeout(() => {
+        optimisticRef.current = null;
+        forceClearLoading();
+      }, FALLBACK_CLEAR_MS);
     } catch {
+      clearFallbackTimer();
       if (optimisticRef.current) {
         setFan1Status(optimisticRef.current.fan1);
         setFan2Status(optimisticRef.current.fan2);
@@ -159,6 +219,11 @@ export function useFanControl(
     return handleFanControl('ALL', action);
   }, [handleFanControl]);
 
+  const presetStates = useCallback((fan1: 'ON' | 'OFF', fan2: 'ON' | 'OFF') => {
+    setFan1Status(fan1);
+    setFan2Status(fan2);
+  }, []);
+
   return {
     fan1Status,
     fan2Status,
@@ -170,6 +235,7 @@ export function useFanControl(
     controlFan2,
     controlAllFans,
     handleFanControl,
+    presetStates,
     setSyncingUntil,
     isLoading: false,
     error,

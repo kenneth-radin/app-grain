@@ -145,6 +145,16 @@ export default function SessionsScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Session Load Error Banner — never fail silently */}
+          {error ? (
+            <TouchableOpacity style={styles.errorBanner} onPress={onRefresh} activeOpacity={0.8}>
+              <Ionicons name="cloud-offline-outline" size={16} color="#991B1B" />
+              <Text style={styles.errorBannerText}>
+                Couldn't load sessions from the server. Tap to retry. ({error})
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           {/* Active Session Card */}
           {activeSession && (
             <AnimatedView entering={FadeIn.duration(300)}>

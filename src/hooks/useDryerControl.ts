@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { grainApi, isNetworkError } from '@/api';
@@ -207,8 +207,13 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
     return () => clearInterval(interval);
   }, [mode, isRunning, deviceId, sensorData, temperature, fanSpeed]);
 
+  // NOTE: intentionally NO client-side pendingCommand blocking here. The ESP
+  // polls one command at a time and the backend queues everything — gating
+  // START/STOP on runtimeState.pendingCommand only produced permanent
+  // "device busy" failures when the flag stayed set. Get out of the way.
+
   const handleStopDryer = useCallback(() => {
-    if (isControlling || runtimeState?.pendingCommand) return;
+    if (isControlling) return;
     if (!deviceId) {
       Alert.alert('No Device', 'Please select a device first.');
       return;
@@ -225,32 +230,46 @@ export function useDryerControl(devices: Device[], devicesLoading: boolean): Use
           setCommandTimeout(false);
           setOptimisticRunning(false);
           setSyncingUntil(Date.now() + DRYING.SYNC_WINDOW_MS);
+          // SAFETY FIRST: always tell the hardware to stop, regardless of any
+          // session bookkeeping problems.
+          let hardwareStopped = true;
+          try {
+            await grainApi.dryer.stop(deviceId);
+          } catch (cmdErr) {
+            if (isNetworkError(cmdErr)) {
+              setOptimisticRunning(null);
+              await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
+              showToast('Connection issue - stop command queued', 'warning');
+              setIsControlling(false);
+              return;
+            }
+            hardwareStopped = false;
+          }
+          // Then end the session record — History must capture the run.
           try {
             const ok = await sessionCtx.stopDrying('complete');
             if (ok) {
-              showToast('Dryer stopped successfully', 'success');
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast(hardwareStopped ? 'Dryer stopped successfully' : 'Stop sent — device did not acknowledge', hardwareStopped ? 'success' : 'warning');
             } else {
-              const msg = sessionCtx.error || 'Failed to stop dryer';
-              // Failure (server said no): KEEP showing RUNNING so the user can retry STOP -
-              // the physical dryer is still running until a real STOP lands.
+              // Keep showing RUNNING so the user can retry STOP —
+              // the physical dryer may still be running until a real STOP lands.
               setOptimisticRunning(true);
-              showToast(String(msg || 'Failed to stop dryer'), 'error');
+              const msg = sessionCtx.getLastError() || sessionCtx.error || 'session tracking failed';
+              showToast(`Stop command sent, but ${msg}`, 'warning');
             }
-          } catch (err) {
-            // Transport-level failure: queue the stop for the offline flusher.
-            setOptimisticRunning(null);
-            await enqueueCommand({ id: `${Date.now()}-stop`, deviceId, type: 'stop', payload: {}, queuedAt: Date.now() });
-            showToast('Connection issue - stop command queued', 'warning');
+          } catch {
+            showToast('Stop command sent — session update failed (offline)', 'warning');
           } finally {
             setIsControlling(false);
           }
         },
       },
     ]);
-  }, [deviceId, sessionCtx, showToast, isControlling, runtimeState?.pendingCommand]);
+  }, [deviceId, sessionCtx, showToast, isControlling]);
 
   const handleStartDryer = useCallback(() => {
-    if (isControlling || runtimeState?.pendingCommand) return;
+    if (isControlling) return;
     if (!deviceId) {
       Alert.alert('No Device', 'Please select a device first.');
       return;
@@ -309,7 +328,7 @@ Fan: ${fanSpeed}%` : 'Settings will be adjusted automatically based on temperatu
         },
       ],
     );
-  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast, deviceOnline, isControlling, runtimeState?.pendingCommand]);
+  }, [deviceId, selectedDevice, mode, temperature, fanSpeed, sessionCtx, showToast, deviceOnline, isControlling]);
 
   return {
     mode,
