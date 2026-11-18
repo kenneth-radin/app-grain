@@ -49,7 +49,6 @@ export function useRealtimeSensor(deviceId?: string) {
   const [isFallbackMode, setIsFallbackMode] = useState(!db)
   const [deviceStatus, setDeviceStatus] = useState<string | null>(null)
   const [runtimeState, setRuntimeState] = useState<RealtimeRuntimeState | null>(null)
-  const [pendingCommandCount, setPendingCommandCount] = useState(0)
   const prevStatusRef = useRef<string | null>(null)
   const lastCommandTimestampRef = useRef<number>(0)
   const unsubsRef = useRef<Unsubscribe[]>([])
@@ -70,7 +69,6 @@ export function useRealtimeSensor(deviceId?: string) {
       setCommandAcknowledged(false)
       setDeviceStatus(null)
       setRuntimeState(null)
-      setPendingCommandCount(0)
       setIsFallbackMode(true)
       return
     }
@@ -84,7 +82,6 @@ export function useRealtimeSensor(deviceId?: string) {
     setIsFallbackMode(false)
     setDeviceStatus(null)
     setRuntimeState(null)
-    setPendingCommandCount(0)
     prevStatusRef.current = null
     lastCommandTimestampRef.current = 0
 
@@ -123,13 +120,6 @@ export function useRealtimeSensor(deviceId?: string) {
       setRuntimeState(snapshot.val())
     }))
 
-    // Real command-queue depth (ground truth for "is the device busy?")
-    const pendingCommandsRef = ref(db, `grain/commands/${deviceId}/pending`)
-    unsubsRef.current.push(onValue(pendingCommandsRef, (snapshot) => {
-      const val = snapshot.val()
-      setPendingCommandCount(val ? Object.keys(val).length : 0)
-    }))
-
     unsubsRef.current.push(onValue(commandRef, (snapshot) => {
       const cmd = snapshot.val()
       if (cmd && cmd.action) {
@@ -158,6 +148,5 @@ export function useRealtimeSensor(deviceId?: string) {
     remoteCommand,
     commandAcknowledged: commandAcknowledged || runtimeState?.commandAcknowledged === true,
     runtimeState,
-    pendingCommandCount,
   }
 }
